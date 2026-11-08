@@ -1,6 +1,7 @@
-"""추적: 사진 사이 같은 물체 연결, 있음/챙김 판정, 변화(생김·이동·사라짐) 기록, 위치 설명
+"""추적: 사진 사이 같은 물체 연결, 있음/미탐지 판정, 변화 기록, 위치 설명
 
-track 상태: candidate(확인 중) → present(있음) → taken(사라짐) → (다시 보이면) present
+track 상태: candidate(확인 중) → present(있음) ↔ missing(화면에서 사라짐)
+missing은 실제로 챙겼다는 뜻이 아니며, 다시 탐지되면 present로 복귀한다.
 owner: unknown(체크인 전) / amenity(체크인 때 있던 숙소 비품) / mine(체크인 후 생긴 내 물건)
 """
 import math
@@ -15,8 +16,8 @@ def new_track(S, det, now):
     return {"id": S["next_id"], "class": det["class"], "bbox": det["bbox"],
             "hits": deque([1], maxlen=STABLE_WINDOW), "status": "candidate",
             "owner": "mine" if S["mode"] == "WATCH" else "unknown",
-            "where": "", "anchor": center(det["bbox"]),
-            "first_seen": now, "last_seen": now, "taken_at": None}
+            "where": "", "anchor": center(det["bbox"]), "anchor_bbox": det["bbox"],
+            "first_seen": now, "last_seen": now, "taken_at": None, "missing_since": None}
 
 
 def match_detections(tracks, detections):
@@ -45,10 +46,11 @@ def confirm(S, t):
     같은 종류인데 사라졌거나 이번 사진에서 안 보인 기록이 있으면 그 기록을 되살림
     (물건을 멀리 옮긴 경우: IoU 매칭이 끊겨도 같은 물건으로 보고 '이동'으로 기록, 비품·내 물건 구분도 유지)"""
     gone = [o for o in S["tracks"] if o is not t and o["class"] == t["class"]
-            and (o["status"] == "taken" or (o["status"] == "present" and o["last_seen"] < t["last_seen"]))]
+            and (o["status"] in ("missing", "taken") or (o["status"] == "present" and o["last_seen"] < t["last_seen"]))]
     if gone:
         old = max(gone, key=lambda o: o["last_seen"])
-        old.update(bbox=t["bbox"], hits=t["hits"], status="present", last_seen=t["last_seen"], taken_at=None)
+        old.update(bbox=t["bbox"], hits=t["hits"], status="present", last_seen=t["last_seen"],
+                   anchor=center(t["bbox"]), anchor_bbox=t["bbox"], taken_at=None, missing_since=None)
         S["tracks"].remove(t)
         return old, "moved"
     t["status"] = "present"
@@ -62,12 +64,27 @@ def update_tracks(S, detections, now):
     changes = []
 
     for t, d in matched:
+        previous_status = t["status"]
         t.update(bbox=d["bbox"], last_seen=now)
         t["hits"].append(1)
         seen.add(t["id"])
-        if t["status"] == "present" and math.dist(center(d["bbox"]), t["anchor"]) > MOVE_PX:
-            t["anchor"] = center(d["bbox"])            # 조금씩 밀린 경우도 누적해서 이동으로 기록
-            changes.append(("moved", t))
+
+        if previous_status == "missing":
+            t["status"], t["missing_since"] = "present", None
+            t["taken_at"] = None
+            t["anchor"] = center(d["bbox"])
+            t["anchor_bbox"] = d["bbox"]
+            changes.append(("returned", t))
+        elif t["status"] == "present":
+            reference_bbox = t.get("anchor_bbox", t["bbox"])
+            reference_size = math.hypot(reference_bbox[2] - reference_bbox[0],
+                                        reference_bbox[3] - reference_bbox[1])
+            reference_size = max(reference_size, 1.0)
+            relative_move = math.dist(center(d["bbox"]), t["anchor"]) / reference_size
+            if relative_move > MOVE_RATIO:
+                t["anchor"] = center(d["bbox"])
+                t["anchor_bbox"] = d["bbox"]
+                changes.append(("moved", t))
 
     for t in list(S["tracks"]):
         if t["id"] not in seen:
@@ -82,8 +99,10 @@ def update_tracks(S, detections, now):
                 S["tracks"].remove(t)                  # 잠깐 보였던 오탐지 제거
 
         elif t["status"] == "present" and now - t["last_seen"] > MISSING_SEC:
-            t["status"], t["taken_at"] = "taken", t["last_seen"]
-            changes.append(("taken", t))
+            # 화면에서 일정 시간 보이지 않는다는 사실만 기록한다.
+            # 카메라 사각지대/가림/탐지 실패일 수 있으므로 '챙김'으로 단정하지 않는다.
+            t["status"], t["missing_since"] = "missing", now
+            changes.append(("missing", t))
 
     for d in unmatched:
         S["tracks"].append(new_track(S, d, now))
@@ -94,7 +113,8 @@ def update_tracks(S, detections, now):
 def summarize(t):
     return {"id": t["id"], "class": t["class"], "name": name_ko(t["class"]),
             "where": t["where"], "status": t["status"], "owner": t["owner"],
-            "first_seen": t["first_seen"], "last_seen": t["last_seen"], "taken_at": t["taken_at"]}
+            "first_seen": t["first_seen"], "last_seen": t["last_seen"],
+            "taken_at": t["taken_at"], "missing_since": t.get("missing_since")}
 
 
 def center(bbox):

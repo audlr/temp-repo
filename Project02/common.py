@@ -67,7 +67,7 @@ def is_left(item, exceptions):
 
 def is_missing_amenity(item):
     """체크인 때 있던 숙소 비품이 사라짐 (짐에 같이 넣었을 수 있음)"""
-    return item["status"] == "taken" and item["owner"] == "amenity"
+    return item["status"] in ("missing", "taken") and item["owner"] == "amenity"
 
 
 def name_ko(item_class):

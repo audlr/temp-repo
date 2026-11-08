@@ -84,8 +84,8 @@ POLL_SEC = 0.2          # control.json 확인 간격(초)
 MATCH_IOU = 0.3         # 이전 사진 물체와 같은 물체로 볼 최소 IoU
 STABLE_WINDOW = 4       # 최근 N장 중
 STABLE_HITS = 3         # M장 이상 보이면 "있음" 확정 (손에 잠깐 가려져도 유지)
-MISSING_SEC = 4.5       # 확정된 물건이 이 시간(사진 2장 이상) 넘게 안 보이면 "챙김"
-MOVE_PX = 40            # 물건 중심이 이 거리(px) 넘게 움직이면 "이동"으로 기록
+MISSING_SEC = 4.5       # 이 시간 동안 안 보이면 '화면에서 사라짐(missing)'으로 표시 (챙김 확정 아님)
+MOVE_RATIO = 0.25       # 기준 바운딩 박스 대각선 대비 중심 이동 비율이 이 값보다 크면 이동 기록
 ALERT_SEC = 6           # 남은 물건 경고 화면 표시 시간
 
 

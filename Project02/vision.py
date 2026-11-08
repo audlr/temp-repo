@@ -20,7 +20,8 @@ def log_changes(S, changes, now):
     """이번 사진에서 생긴 변화를 터미널에 출력하고 최근 20개를 기록 (체크인 후에만)"""
     if S["mode"] != "WATCH":
         return
-    words = {"appeared": "생김", "moved": "이동", "taken": "사라짐"}
+    words = {"appeared": "생김", "moved": "이동", "missing": "화면에서 사라짐",
+             "returned": "다시 탐지됨", "taken": "사라짐(이전 버전)"}
     for kind, t in changes:
         owner = "비품" if t["owner"] == "amenity" else "내 물건"
         print(f"[변화] {name_ko(t['class'])}({owner}) {words[kind]} - {t['where']}")
@@ -30,7 +31,7 @@ def log_changes(S, changes, now):
 
 def save_state(S, now):
     """사진 처리 후 저장. control_seq: 어느 요청까지 반영된 상태인지 (assistant가 최신 사진 결과를 기다릴 때 사용)"""
-    items = [summarize(t) for t in S["tracks"] if t["status"] in ("present", "taken")]
+    items = [summarize(t) for t in S["tracks"] if t["status"] in ("present", "missing", "taken")]
     write_json(STATE_JSON, {"mode": S["mode"], "time": now, "control_seq": S["control_seq"],
                             "exceptions": S["exceptions"], "items": items, "changes": list(S["changes"])})
 
@@ -52,16 +53,19 @@ def checkout(S, now, reason):
         return
     left = [t for t in S["tracks"] if is_left(t, S["exceptions"])]
     missing = [t for t in S["tracks"] if is_missing_amenity(t)]
+    uncertain = [t for t in S["tracks"] if t["status"] == "missing" and t["owner"] == "mine"]
 
     S["event_seq"] += 1
     write_json(EVENT_JSON, {"seq": S["event_seq"], "time": now, "type": "checkout", "reason": reason,
                             "items_left": [summarize(t) for t in left],
-                            "missing_amenities": [summarize(t) for t in missing]})
+                            "missing_amenities": [summarize(t) for t in missing],
+                            "items_uncertain": [summarize(t) for t in uncertain]})
 
     S["alert_until"] = now + ALERT_SEC if left else 0
     S["alert_ids"] = [t["id"] for t in left]
     print(f"[체크아웃] 남은 물건 {len(left)}개 {[name_ko(t['class']) for t in left]}, "
-          f"사라진 비품 {len(missing)}개 {[name_ko(t['class']) for t in missing]}")
+          f"확인되지 않는 내 물건 {len(uncertain)}개 {[name_ko(t['class']) for t in uncertain]}, "
+          f"화면에서 사라진 비품 {len(missing)}개 {[name_ko(t['class']) for t in missing]}")
 
 
 def poll_control(S):
@@ -105,7 +109,7 @@ def track_color(S, t):
 def draw(S, frame, now):
     # 물건 (화면 글자는 영어: cv2.putText가 한글을 지원하지 않음)
     for t in S["tracks"]:
-        if t["status"] == "taken":
+        if t["status"] in ("taken", "missing"):
             continue
         color = track_color(S, t)
         x1, y1, x2, y2 = t["bbox"]
@@ -117,10 +121,11 @@ def draw(S, frame, now):
     mine = [t for t in S["tracks"] if t["owner"] == "mine"]
     present = sum(t["status"] == "present" for t in mine)
     taken = sum(t["status"] == "taken" for t in mine)
+    uncertain = sum(t["status"] == "missing" for t in mine)
     if S["mode"] == "READY":
         put_text(frame, "READY - press i (or say check-in) to register room amenities", (PAD, 22), YELLOW, TEXT_L)
     else:
-        put_text(frame, f"WATCH  mine: {present} out / {taken} packed", (PAD, 22), GREEN, TEXT_L)
+        put_text(frame, f"WATCH  mine: {present} out / {taken} packed / {uncertain} unconfirmed", (PAD, 22), GREEN, TEXT_L)
     if S["exceptions"]:
         put_text(frame, "leave OK: " + ", ".join(S["exceptions"]), (PAD, 44), BLUE)
 
