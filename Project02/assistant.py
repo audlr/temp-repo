@@ -29,7 +29,7 @@ def checkout_sentence(left, missing, uncertain=None):
         sentences.append(f"그리고 숙소 비품인 {josa(names, ('이', '가'))} 화면에서 확인되지 않아요. 원래 위치에 있는지 확인해 주세요.")
     if uncertain:
         names = ", ".join(i["name"] for i in uncertain)
-        sentences.append(f"화면에서 확인되지 않는 내 물건은 {names}이에요. 실제로 챙기셨는지 확인해 주세요.")
+        sentences.append(f"화면에서 확인되지 않는 내 물건은 {josa(names, ('이에요', '예요'))}. 실제로 챙기셨는지 확인해 주세요.")
     if not sentences:
         return "빠뜨린 물건이 없어요. 조심히 다녀오세요!"
     return " ".join(sentences)
@@ -86,11 +86,11 @@ def decide(intent, state, control, now):
         if present and taken:
             return f"지금 꺼내 둔 물건은 {josa(present, ('이고', '고'))}, 챙긴 물건은 {josa(taken, ('이에요', '예요'))}."
         if taken and uncertain:
-            return f"챙긴 것으로 기록된 물건은 {taken}이고, 화면에서 확인되지 않는 물건은 {uncertain}이에요. 확인해 주세요."
+            return f"챙긴 것으로 기록된 물건은 {josa(taken, ('이고', '고'))}, 화면에서 확인되지 않는 물건은 {josa(uncertain, ('이에요', '예요'))}. 확인해 주세요."
         if present and uncertain:
-            return f"지금 꺼내 둔 물건은 {present}이고, 화면에서 확인되지 않는 물건은 {uncertain}이에요. 챙기셨는지 확인해 주세요."
+            return f"지금 꺼내 둔 물건은 {josa(present, ('이고', '고'))}, 화면에서 확인되지 않는 물건은 {josa(uncertain, ('이에요', '예요'))}. 챙기셨는지 확인해 주세요."
         if uncertain:
-            return f"화면에서 확인되지 않는 물건은 {uncertain}이에요. 실제로 챙기셨는지 확인해 주세요."
+            return f"화면에서 확인되지 않는 물건은 {josa(uncertain, ('이에요', '예요'))}. 실제로 챙기셨는지 확인해 주세요."
         if present:
             return f"지금 꺼내 둔 물건은 {josa(present, ('이에요', '예요'))}."
         return f"꺼내 둔 물건은 없고, 챙긴 물건은 {josa(taken, ('이에요', '예요'))}."
