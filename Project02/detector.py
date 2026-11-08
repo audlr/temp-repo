@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 
 from config import *
-from common import zone_of
 
 
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (MORPH_K, MORPH_K))
@@ -97,9 +96,7 @@ def detect_unknown(S, gray, known_bboxes):
         if cv2.contourArea(c) < UNKNOWN_MIN_AREA:
             continue
         x, y, w, h = cv2.boundingRect(c)
-        bbox = (x, y, x + w, y + h)
-        if zone_of(bbox) is not OUTSIDE_ZONE:            # 구역 안에 놓인 것만
-            detections.append({"class": UNKNOWN_CLASS, "conf": 0.5, "bbox": bbox})
+        detections.append({"class": UNKNOWN_CLASS, "conf": 0.5, "bbox": (x, y, x + w, y + h)})
     return detections
 
 

@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from config import ITEM_NAMES_KO, CARRIERS, ZONES, OUTSIDE_ZONE
+from config import ITEM_NAMES_KO, CARRIERS
 
 
 def cleanup_old_files(folders, keep_sec, now):
@@ -71,18 +71,6 @@ def apply_nms(detections, iou_threshold):
     return keep
 
 
-def zone_of(bbox):
-    """BBox 중심점이 들어 있는 구역"""
-    cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
-    for zone in ZONES:
-        x1, y1, x2, y2 = zone["rect"]
-        if x1 <= cx < x2 and y1 <= cy < y2:
-            return zone
-    return OUTSIDE_ZONE
-
-
-# 남은 물건 판단 기준: vision·assistant가 같은 기준을 쓰도록 여기 한 곳에서 정의
-# item은 vision의 track이든 state.json의 물건 기록이든 같은 키(id, class, status, owner)를 가짐
 def is_exception(item, exceptions):
     """두고 가도 되는 물건: 클래스로 지정("umbrella") 또는 이름 붙인 물건을 id로 지정("id:3")"""
     return item["class"] in exceptions or f"id:{item['id']}" in exceptions
@@ -114,12 +102,6 @@ def josa(word, pair):
         has_final = (ord(last) - ord("가")) % 28 != 0
         return word + (pair[0] if has_final else pair[1])
     return word + pair[1]
-
-
-def clock_ko(timestamp):
-    """1731050000.0 → '14시 32분'"""
-    t = time.localtime(timestamp)
-    return f"{t.tm_hour}시 {t.tm_min}분"
 
 
 def ago_ko(timestamp, now=None):

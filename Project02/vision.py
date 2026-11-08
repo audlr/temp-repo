@@ -6,13 +6,12 @@ from collections import deque
 import cv2
 import numpy as np
 
-import away
 from config import *
 from common import (write_json, read_json, apply_nms, track_name,
                     is_exception, is_my_item, is_left, cleanup_old_files)
 from detector import (load_yolo, detect_yolo, detect_markers, to_gray,
                       detect_unknown, update_background, save_roi)
-from tracker import update_tracks, summarize
+from tracker import update_tracks, update_locations, summarize
 
 
 def open_camera():
@@ -46,8 +45,7 @@ def save_state(S, now):
     """사진 처리 후 저장. control_seq: 어느 요청까지 반영된 상태인지 (assistant가 최신 사진 결과를 기다릴 때 사용)"""
     items = [summarize(t) for t in S["tracks"] if t["status"] in ("present", "taken")]
     write_json(STATE_JSON, {"session": S["session"], "mode": S["mode"], "control_seq": S["control_seq"],
-                            "exceptions": S["exceptions"], "items": items,
-                            "away": S["away"], "away_log": S["away_log"]})
+                            "exceptions": S["exceptions"], "items": items})
 
 
 def push_event(S, event):
@@ -73,8 +71,8 @@ def request_label(S, t, frame, now):
     path = os.path.join(ROI_DIR, f"item_{t['id']}.jpg")
     if save_roi(frame, t["bbox"], path):
         push_event(S, {"time": now, "type": "unknown_item", "track_id": t["id"],
-                       "zone": t["zone"]["name"], "image": path})
-        print(f"[새 물건] id {t['id']} ({t['zone']['name']}) → 이름 요청")
+                       "where": t["where"], "image": path})
+        print(f"[새 물건] id {t['id']} ({t['where']}) → 이름 요청")
     t["label_requested"] = True
 
 
@@ -116,10 +114,6 @@ def run_command(S, now):
         fire_depart(S, now, "voice")
     elif command == "depart_key":
         fire_depart(S, now, "key")
-    elif command == "away_on":
-        away.set_away(S, True)
-    elif command == "away_off":
-        away.set_away(S, False)
     elif command == "reset":
         reset(S)
 
@@ -144,12 +138,6 @@ def track_color(S, t):
 
 
 def draw(S, frame, now):
-    # 구역
-    for zone in ZONES:
-        x1, y1, x2, y2 = zone["rect"]
-        cv2.rectangle(frame, (x1, y1), (x2 - 1, y2 - 1), ORANGE, 1)
-        put_text(frame, zone["key"], (x1 + 5, y2 - 8), ORANGE)
-
     # 물건 (화면 글자는 영어: cv2.putText가 한글을 지원하지 않음)
     for t in S["tracks"]:
         if t["status"] == "taken" or t["owner"] == "ignored":
@@ -170,7 +158,6 @@ def draw(S, frame, now):
         put_text(frame, f"WATCH  mine: {present} on table / {taken} packed", (PAD, 22), GREEN, TEXT_L)
     if S["exceptions"]:
         put_text(frame, "leave OK: " + ", ".join(S["exceptions"]), (PAD, 44), BLUE)
-    away.draw_status(S, frame)
 
     # 출발 경고
     if S["alert_until"] > now:
@@ -179,15 +166,14 @@ def draw(S, frame, now):
         put_text(frame, "WAIT! LEFT: " + ", ".join(names), (PAD, 70), WHITE, TEXT_L)
 
     h = frame.shape[0]
-    put_text(frame, "i: check-in  a: away on/off  d: depart check  c: reset  q: quit", (PAD, h - 10), WHITE)
+    put_text(frame, "i: check-in  d: depart check  c: reset  q: quit", (PAD, h - 10), WHITE)
 
 
 def new_state():
     S = {"mode": "READY", "tracks": [], "next_id": 0, "exceptions": [],
          "session": int(time.time()), "control_seq": 0, "event_seq": 0, "alert_until": 0, "alert_ids": [],
          "pending": None, "last_snap": 0, "last_poll": 0, "last_cleanup": 0,
-         "background": None, "last_gray": None, "events": deque(maxlen=20), "changes": []}
-    S.update(away.new_away_state())
+         "background": None, "last_gray": None, "events": deque(maxlen=20)}
     return S
 
 
@@ -204,8 +190,6 @@ def handle_key(S, key, now):
         return False
     if key == ord("i"):
         S["pending"] = "checkin"         # 새 사진을 찍은 뒤 체크인
-    if key == ord("a"):
-        S["pending"] = "away_off" if S["away"] else "away_on"
     if key == ord("d"):
         S["pending"] = "depart_key"      # 새 사진을 찍은 뒤 출발 점검
     if key == ord("c"):
@@ -230,15 +214,15 @@ def snapshot(S, yolo, class_ids, frame, now):
         detections += detect_unknown(S, gray, known)
 
     departed = update_tracks(S, detections, now)
+    update_locations(S, frame.shape)
 
     objects = [d["bbox"] for d in detections] + [t["bbox"] for t in S["tracks"] if t["status"] != "taken"]
     update_background(S, gray, objects)
-    if departed and S["mode"] == "WATCH" and not S["away"]:   # 외출 중 가방이 사라진 건 출발이 아니라 방범 기록
+    if departed and S["mode"] == "WATCH":
         fire_depart(S, now, "carrier left")
 
-    away.record_changes(S, frame, now)
     if now - S["last_cleanup"] >= CLEANUP_SEC:
-        cleanup_old_files([AWAY_DIR, ROI_DIR], KEEP_SEC, now)
+        cleanup_old_files([ROI_DIR], KEEP_SEC, now)
         S["last_cleanup"] = now
 
     for t in S["tracks"]:

@@ -6,7 +6,6 @@ YOLO_MODEL_PATH = "src/models/YOLO/yolo11n_int8.engine"
 GEMMA_MODEL_PATH = "src/models/Gemma4/google_gemma-4-E2B-it-Q4_K_M.gguf"
 MMPROJ_PATH = "src/models/Gemma4/mmproj-google_gemma-4-E2B-it-f16.gguf"
 ROI_DIR = "src/output/checkout"                  # 모르는 물건 ROI 이미지 저장 위치
-AWAY_DIR = "src/output/away"                     # 부재 모드 변화 사진 저장 위치
 
 STATE_JSON = "src/json/checkout_state.json"      # vision → assistant : 현재 물건 상태
 EVENT_JSON = "src/json/checkout_event.json"      # vision → assistant : 출발 감지, 새 물건 이벤트
@@ -97,18 +96,14 @@ BG_ALPHA = 0.05         # 물체가 없는 영역의 배경 갱신 비율 (사�
 ROI_PAD = 10            # ROI를 자를 때 여유
 
 
-# 외출 중 내 물건이 사라지거나 새 물체가 생긴 순간만 사진으로 저장 (영상 녹화·녹음 없음)
-AWAY_BUFFER = 4          # 변화 직전 사진도 남기기 위해 최근 N장을 메모리에 보관 (챙김 판정까지 사진 2~3장 지연)
-KEEP_SEC = 24 * 3600     # 저장한 사진(부재 사진, 모르는 물건 ROI)은 24시간 뒤 자동 삭제
+KEEP_SEC = 24 * 3600     # 저장한 모르는 물건 ROI 사진은 24시간 뒤 자동 삭제
 CLEANUP_SEC = 600        # 오래된 사진 삭제 확인 주기(초)
 
 
-ZONES = [
-    {"key": "bed_left", "name": "침대 왼쪽", "rect": (0, 140, 320, 480)},
-    {"key": "bed_right", "name": "침대 오른쪽", "rect": (320, 140, 640, 480)},
-    {"key": "nightstand", "name": "협탁", "rect": (0, 0, 640, 140)},
-]
-OUTSIDE_ZONE = {"key": "outside", "name": "구역 밖"}
+# 위치 설명: 고정 구역 없이 가장 가까운 주변 물건을 기준으로 말함 ("노트북 왼쪽", "컵 위")
+ON_TOP_RATIO = 0.6       # 물건 면적의 60% 이상이 기준 물건과 겹치면 "위" (예: 노트북 위의 휴대폰)
+MIN_REF_RATIO = 0.5      # 크기가 절반도 안 되는 물건은 기준으로 쓰지 않음
+NEAR_RATIO = 1.0         # 두 물건 사이 간격이 둘 중 큰 물건 크기 이내면 "왼쪽/오른쪽/위쪽/아래쪽", 더 멀면 화면 기준 위치
 
 
 # 매 프레임 YOLO를 돌리지 않고, 일정 간격으로 찍은 사진만 처리 (물건은 거의 움직이지 않으므로 충분)

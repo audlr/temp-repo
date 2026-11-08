@@ -6,7 +6,6 @@ import subprocess
 
 from config import *
 from common import write_json, read_json, name_ko, josa, ago_ko, is_exception, is_my_item, is_left
-from away import away_report
 from intent import parse_intent, name_item_image
 from speech import speech_to_text, text_to_speech
 
@@ -37,11 +36,11 @@ def items_of(key, state):
 
 
 def left_sentence(left):
-    """[휴대폰(침대 오른쪽), 충전기(협탁)] → '잠깐만요! 침대 오른쪽에 휴대폰, 협탁에 충전기가 아직 남아 있어요.'"""
-    by_zone = {}
+    """[휴대폰(노트북 왼쪽), 여권(컵 아래쪽)] → '잠깐만요! 노트북 왼쪽에 휴대폰, 컵 아래쪽에 여권이 아직 남아 있어요.'"""
+    by_where = {}
     for item in left:
-        by_zone.setdefault(item["zone"], []).append(item["name"])
-    parts = [f"{zone}에 {', '.join(names)}" for zone, names in by_zone.items()]
+        by_where.setdefault(item["where"], []).append(item["name"])
+    parts = [f"{where}에 {', '.join(names)}" for where, names in by_where.items()]
     return f"잠깐만요! {josa(', '.join(parts), ('이', '가'))} 아직 남아 있어요."
 
 
@@ -68,10 +67,10 @@ def decide(intent, state, control, now):
                 continue
             item = max(found, key=lambda i: i["last_seen"])
             if item["status"] == "present":
-                answers.append(f"{josa(item['name'], ('은', '는'))} 지금 {item['zone']}에 있어요.")
+                answers.append(f"{josa(item['name'], ('은', '는'))} 지금 {item['where']}에 있어요.")
             else:
                 answers.append(f"{josa(item['name'], ('은', '는'))} {ago_ko(item['taken_at'], now)} "
-                               f"{item['zone']}에서 챙기신 뒤로 안 보여요.")
+                               f"{item['where']}에서 챙기신 뒤로 안 보여요.")
         if not answers:                                     # 찾은 물건이 하나도 없을 때만 '본 적 없음' 안내
             answers = [f"{josa(key_name(key, state), ('은', '는'))} 아직 본 적이 없어요." for key in missing]
         return " ".join(answers)
@@ -105,12 +104,6 @@ def decide(intent, state, control, now):
     if name == "checkin":
         return "체크인했어요. 지금 보이는 물건은 숙소 비품으로 기억할게요."
 
-    if name == "away_on":
-        return "다녀오세요. 그동안 물건에 변화가 생기면 사진으로 남겨 둘게요."
-
-    if name in ("away_off", "away_report"):
-        return away_report(state, name == "away_off")
-
     return "잘 못 알아들었어요. '나 이제 나가도 돼?'나 '내 폰 어디 있어?'처럼 말씀해 주세요."
 
 
@@ -128,8 +121,7 @@ def apply_intent(intent, control):
     elif name == "exception_remove":
         control["exceptions"] = [c for c in control["exceptions"] if c not in intent["items"]]
 
-    command = {"checkin": "checkin", "depart": "depart",
-               "away_on": "away_on", "away_off": "away_off"}.get(name, "snapshot")
+    command = {"checkin": "checkin", "depart": "depart"}.get(name, "snapshot")
     send_control(control, command)
     return control["seq"]
 

@@ -26,8 +26,7 @@ if USE_LLM:
 
 ALL_ITEMS = YOLO_ITEMS + list(MARKERS.keys())
 GENERIC_WORDS = {"물건", "소지품", "케이스"}
-INTENTS = ["check", "locate", "list", "exception_add", "exception_remove", "checkin", "depart",
-           "away_on", "away_off", "away_report", "unknown"]
+INTENTS = ["check", "locate", "list", "exception_add", "exception_remove", "checkin", "depart", "unknown"]
 
 
 def generate(messages, max_tokens):
@@ -51,9 +50,6 @@ Context:
 - exception_remove: 예외를 취소함 ("우산도 챙길래")
 - checkin: 체크인, 지금 있는 물건은 숙소 비품이라고 알려줌 ("체크인", "지금 있는 건 숙소 거야")
 - depart: 체크아웃하고 숙소를 떠난다고 알림 ("나 이제 나갈게", "출발할게")
-- away_on: 짐을 두고 잠깐 외출함 ("외출할게", "잠깐 나갔다 올게")
-- away_off: 외출에서 돌아옴 ("다녀왔어", "나 왔어")
-- away_report: 외출한 동안 생긴 일을 물음 ("나 없는 동안 무슨 일 있었어?")
 - unknown: 위에 해당하지 않음
 물건 키 목록: {item_list}
 
@@ -89,12 +85,6 @@ def parse_intent_rule(text):
 
     if "체크인" in text or "숙소 거" in text:
         intent = "checkin" if not items else "exception_add"
-    elif any(k in text for k in ["없는 동안", "무슨 일"]):
-        intent = "away_report"
-    elif any(k in text for k in ["다녀왔", "나 왔어", "돌아왔"]):
-        intent = "away_off"
-    elif any(k in text for k in ["외출", "나갔다 올", "다녀올게"]):
-        intent = "away_on"
     elif any(k in text for k in ["두고 가도", "놓고 가도", "안 챙겨도", "필요 없"]):
         intent = "exception_add"
     elif any(k in text for k in ["챙길", "가져갈"]) and items:
