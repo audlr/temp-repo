@@ -1,4 +1,5 @@
 """프로세스 2: 음성(또는 키보드) 질문 → 의도 분석 → 규칙 판단 → 음성 답변, vision 이벤트 처리"""
+import os
 import sys
 import time
 import select
@@ -8,6 +9,9 @@ from config import *
 from common import write_json, read_json, name_ko, josa, ago_ko, is_exception, is_my_item, is_left
 from intent import parse_intent, name_item_image
 from speech import speech_to_text, text_to_speech
+
+
+QUIT_WORDS = {"q", "ㅂ", "quit", "exit", "종료"}     # 한글 입력 상태에서 q를 누르면 "ㅂ"이 입력됨
 
 
 def my_items(state):
@@ -214,7 +218,7 @@ def main():
 
     print("Checkout Assistant 시작")
     print("Enter: 음성 질문 녹음" if USE_STT else "질문을 입력하고 Enter")
-    print("텍스트를 입력하고 Enter: 텍스트로 질문 / q: 종료\n")
+    print("텍스트를 입력하고 Enter: 텍스트로 질문 / q(또는 종료): 종료\n")
 
     while True:
         try:
@@ -232,7 +236,7 @@ def main():
             if line is None:
                 continue
             line = line.strip()
-            if line == "q":
+            if line.lower() in QUIT_WORDS:
                 break
             if line == "" and USE_STT:
                 print("말씀해 주세요...")
@@ -249,3 +253,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    print("[assistant] 종료", flush=True)
+    os._exit(0)          # Gemma(llama.cpp)·CUDA 정리 중 멈추는 경우가 있어 바로 종료

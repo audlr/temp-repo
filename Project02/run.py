@@ -49,7 +49,8 @@ def main():
         pass
     finally:
         stop_vision(proc)
-        print("[run] 종료")
+        print("[run] 종료", flush=True)
+        os._exit(0)                              # Gemma(llama.cpp)·CUDA 정리 중 멈추는 경우가 있어 바로 종료
 
 
 if __name__ == "__main__":
