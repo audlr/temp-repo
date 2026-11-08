@@ -2,9 +2,8 @@ import numpy as np
 
 
 # ======================== 경로 ========================
-# Jetson Nano(Maxwell)는 TensorRT INT8을 지원하지 않으므로 FP16 엔진 사용
-# 생성: yolo export model=src/models/YOLO/yolo11n.pt format=engine half=True imgsz=320
-YOLO_MODEL_PATH = "src/models/YOLO/yolo11n_fp16_320.engine"
+# 수업(04 섹션)에서 만든 INT8 TensorRT 엔진 사용
+YOLO_MODEL_PATH = "src/models/YOLO/yolo11n_int8.engine"
 GEMMA_MODEL_PATH = "src/models/Gemma4/google_gemma-4-E2B-it-Q4_K_M.gguf"
 MMPROJ_PATH = "src/models/Gemma4/mmproj-google_gemma-4-E2B-it-f16.gguf"
 ROI_DIR = "src/output/checkout"                  # 모르는 물건 ROI 이미지 저장 위치
@@ -49,7 +48,7 @@ USE_VISION_LLM = False  # 모르는 물건을 Gemma 이미지 입력(mmproj)으�
 # ======================== YOLO ========================
 YOLO_CONF = 0.25        # Confidence Threshold
 YOLO_IOU = 0.5          # YOLO 내부 NMS IoU Threshold
-YOLO_IMGSZ = 320        # 입력 크기. TensorRT 엔진을 만들 때의 imgsz와 같아야 함 (640보다 약 4배 가벼움)
+YOLO_IMGSZ = 640        # 입력 크기. TensorRT 엔진은 만들 때의 imgsz로 고정되므로 같은 값이어야 함 (수업 엔진: 기본값 640)
 NMS_IOU = 0.6           # YOLO + 색 마커 결과를 합친 뒤의 클래스 무관 NMS
 
 # 소지품으로 다룰 COCO 클래스
