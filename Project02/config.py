@@ -4,18 +4,16 @@ import numpy as np
 # 수업(04 섹션)에서 만든 INT8 TensorRT 엔진 사용
 YOLO_MODEL_PATH = "src/models/YOLO/yolo11n_int8.engine"
 GEMMA_MODEL_PATH = "src/models/Gemma4/google_gemma-4-E2B-it-Q4_K_M.gguf"
-MMPROJ_PATH = "src/models/Gemma4/mmproj-google_gemma-4-E2B-it-f16.gguf"
-ROI_DIR = "src/output/checkout"                  # 모르는 물건 ROI 이미지 저장 위치
 
 STATE_JSON = "src/json/checkout_state.json"      # vision → assistant : 현재 물건 상태
-EVENT_JSON = "src/json/checkout_event.json"      # vision → assistant : 출발 감지, 새 물건 이벤트
-CONTROL_JSON = "src/json/checkout_control.json"  # assistant → vision : 예외 목록, 명령, 물건 이름
+EVENT_JSON = "src/json/checkout_event.json"      # vision → assistant : 체크아웃 결과
+CONTROL_JSON = "src/json/checkout_control.json"  # assistant → vision : 예외 목록, 명령
 
 # STT / TTS (06 섹션 설정 그대로)
-MIC_DEVICE = "auto"     # "auto": arecord -l에서 USB 마이크를 찾아 사용. 직접 지정하려면 "plughw:카드번호,0"
+MIC_DEVICE = "plughw:0,0"   # arecord -l 의 "card 번호, device 번호". "auto"면 목록에서 USB 마이크를 찾아 사용
 AUDIO_FILE = "src/audio/input.wav"
 WHISPER_PATH = "whisper.cpp/build-cpu/bin/whisper-cli"
-WHISPER_MODEL = "whisper.cpp/models/ggml-tiny.bin"   # Nano: base 대신 tiny (메모리·속도). 인식률이 아쉬우면 base
+WHISPER_MODEL = "whisper.cpp/models/ggml-base.bin"   # 수업 모델. tiny는 가볍지만 한국어 인식률이 많이 떨어짐
 RECORD_SECONDS = 5
 
 PIPER_PYTHON = ".piper_venv/bin/python"
@@ -33,7 +31,7 @@ PIPELINE = (
     "max-size-bytes=0 max-size-time=0 ! "
     "appsink drop=true max-buffers=1 sync=false"
 )
-USE_GSTREAMER = True    # False: GStreamer 없이 V4L2로 직접 열기 (GStreamer 경고로 자꾸 끊길 때 시도)
+USE_GSTREAMER = True    # False: GStreamer 없이 V4L2로 직접 열기
 CAMERA_RETRY = 10       # 프레임을 이 횟수만큼 연속으로 못 읽으면 카메라를 다시 엶
 CAMERA_REOPEN_MAX = 5   # 다시 열기를 이 횟수만큼 실패하면 종료
 
@@ -42,7 +40,6 @@ CAMERA_REOPEN_MAX = 5   # 다시 열기를 이 횟수만큼 실패하면 종료
 USE_STT = True          # False: 음성 대신 키보드로 질문 입력
 USE_TTS = True          # False: 음성 대신 터미널 출력만
 USE_LLM = True          # False: Gemma 없이 키워드 규칙으로 의도 분석
-USE_VISION_LLM = False  # 모르는 물건을 Gemma 이미지 입력(mmproj)으로 이름 붙이기. Nano는 메모리 측정 후 켜기. False: "물건 N번"
 
 
 YOLO_CONF = 0.4         # Confidence Threshold (0.25는 오탐이 많아 높임)
@@ -52,59 +49,32 @@ NMS_IOU = 0.6           # YOLO + 색 마커 결과를 합친 뒤의 클래스 �
 
 # 소지품으로 다룰 COCO 클래스
 YOLO_ITEMS = [
-    "cell phone", "laptop", "book", "bottle", "umbrella",
-    "handbag", "cup", "remote", "mouse", "toothbrush", "scissors",
+    "cell phone", "laptop", "book", "bottle", "umbrella", "handbag", "backpack", "suitcase",
+    "cup", "remote", "mouse", "toothbrush", "scissors",
 ]
 # 작고 생김새가 단순해 오탐이 잦은 클래스는 더 높은 기준 적용 (실제 화면을 보며 조정)
 CLASS_CONF = {"mouse": 0.7, "remote": 0.6, "toothbrush": 0.6, "scissors": 0.6}
-# 출발 판단용 (들고 나가는 가방)
-CARRIERS = ["backpack", "suitcase"]
 
 
-# 스티커 색 자체에는 의미가 없고, 스티커를 붙인 물건의 이름을 "name"에 적어 사용
-# (COCO에 없으면서 두고 가면 가장 곤란한 물건에 붙이는 것을 추천: 여권, 지갑, 충전기 등)
+# COCO에 없는 물건은 초록 스티커를 붙여 색으로 찾음. "name"에 스티커를 붙인 물건 이름을 적음
 # LAB 범위는 Project01 초록 스티커 값. 조명에 맞게 튜닝 필요
 MARKERS = {
     "green_marker": {"name": "여권",
                      "low": np.array([30, 60, 90], dtype=np.uint8),
                      "high": np.array([230, 115, 180], dtype=np.uint8)},
 }
-
 MARKER_MIN_AREA = 150   # 마커로 인정할 최소 윤곽선 면적
 
 
 ITEM_NAMES_KO = {
     "cell phone": "휴대폰", "laptop": "노트북", "book": "책", "bottle": "물병",
-    "umbrella": "우산", "handbag": "가방", "cup": "컵", "remote": "리모컨",
-    "mouse": "마우스", "toothbrush": "칫솔", "scissors": "가위",
-    "backpack": "배낭", "suitcase": "캐리어",
-    "unknown": "확인 중인 물건",
+    "umbrella": "우산", "handbag": "가방", "backpack": "배낭", "suitcase": "캐리어",
+    "cup": "컵", "remote": "리모컨", "mouse": "마우스", "toothbrush": "칫솔", "scissors": "가위",
 }
 ITEM_NAMES_KO.update({key: marker["name"] for key, marker in MARKERS.items()})   # 마커 물건 이름
 
 
-# 체크인 때 찍은 사진을 배경으로 저장하고, 이후 구역 안에 생긴 변화 중
-# YOLO와 색 마커가 설명하지 못하는 영역을 "모르는 물건"으로 등록
-USE_UNKNOWN = USE_VISION_LLM   # Gemma 확인 없이 켜면 그림자·조명 변화까지 물건으로 잡혀 정신없음 (켜려면 True)
-UNKNOWN_CLASS = "unknown"
-DIFF_BLUR = 21          # 배경 차분 전 블러 커널 (작은 노이즈 무시)
-DIFF_THRESHOLD = 45     # 배경과 밝기 차이가 이 값 이상이면 변화로 판단
-UNKNOWN_MIN_AREA = 3000 # 모르는 물건으로 볼 최소 면적(px)
-UNKNOWN_MAX_AREA = 0.25 # 덩어리 하나가 화면의 25%보다 크면 사람·팔로 보고 무시
-UNKNOWN_MAX_RATIO = 0.4 # 화면 전체의 40% 이상이 변하면 조명 변화나 사람으로 보고 무시
-UNKNOWN_EDGE = 10       # 화면 가장자리에 닿은 덩어리는 화면 밖에서 들어온 손·팔로 보고 무시
-UNKNOWN_HITS = 4        # 모르는 물건은 STABLE_WINDOW장 중 이만큼 연속으로 보여야 확정 (일반 물건보다 엄격)
-UNKNOWN_MATCH_IOU = 0.1 # 덩어리 모양이 사진마다 조금씩 달라도 같은 물체로 연결
-KNOWN_MARGIN = 15       # 이미 아는 물건 BBox를 이만큼 넓혀서 제외 (그림자 등)
-BG_ALPHA = 0.05         # 물체가 없는 영역의 배경 갱신 비율 (사진마다 5%, 약 40초에 걸쳐 조명 변화를 따라감)
-ROI_PAD = 10            # ROI를 자를 때 여유
-
-
-KEEP_SEC = 24 * 3600     # 저장한 모르는 물건 ROI 사진은 24시간 뒤 자동 삭제
-CLEANUP_SEC = 600        # 오래된 사진 삭제 확인 주기(초)
-
-
-# 위치 설명: 고정 구역 없이 가장 가까운 주변 물건을 기준으로 말함 ("노트북 왼쪽", "컵 위")
+# 위치 설명: 가장 가까운 주변 물건을 기준으로 말함 ("노트북 왼쪽", "컵 위")
 ON_TOP_RATIO = 0.6       # 물건 면적의 60% 이상이 기준 물건과 겹치면 "위" (예: 노트북 위의 휴대폰)
 MIN_REF_RATIO = 0.5      # 크기가 절반도 안 되는 물건은 기준으로 쓰지 않음
 NEAR_RATIO = 1.0         # 두 물건 사이 간격이 둘 중 큰 물건 크기 이내면 "왼쪽/오른쪽/위쪽/아래쪽", 더 멀면 화면 기준 위치
@@ -119,6 +89,7 @@ MATCH_IOU = 0.3         # 이전 사진 물체와 같은 물체로 볼 최소 Io
 STABLE_WINDOW = 4       # 최근 N장 중
 STABLE_HITS = 3         # M장 이상 보이면 "있음" 확정 (손에 잠깐 가려져도 유지)
 MISSING_SEC = 4.5       # 확정된 물건이 이 시간(사진 2장 이상) 넘게 안 보이면 "챙김"
+MOVE_PX = 40            # 물건 중심이 이 거리(px) 넘게 움직이면 "이동"으로 기록
 ALERT_SEC = 6           # 남은 물건 경고 화면 표시 시간
 
 
@@ -126,13 +97,12 @@ BLUR_K, MORPH_K = 7, 5
 OPEN_ITER, CLOSE_ITER = 2, 3
 
 
-CONTEXT_WINDOW = 1024   # Nano: KV 캐시 메모리 절약 (의도 분석 프롬프트 + 이미지 토큰이 들어가는 크기)
+CONTEXT_WINDOW = 1024   # Nano: KV 캐시 메모리 절약
 MAX_TOKENS_INTENT = 80
-MAX_TOKENS_NAME = 20
 SNAPSHOT_WAIT_SEC = 4.0  # 질문 후 vision이 새 사진을 처리할 때까지 기다리는 최대 시간
 
 
 GREEN, YELLOW, RED, WHITE, BLACK = (0, 200, 0), (0, 200, 255), (0, 0, 255), (255, 255, 255), (0, 0, 0)
-GRAY, BLUE, ORANGE = (150, 150, 150), (255, 140, 0), (0, 140, 255)
+GRAY, BLUE = (150, 150, 150), (255, 140, 0)
 LINE, TEXT, TEXT_L, PAD = 2, 0.5, 0.6, 12
 WIN = "Checkout Checker"

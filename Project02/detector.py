@@ -1,6 +1,4 @@
-"""탐지: YOLO, 색 마커, 배경 차분(모르는 물건), ROI 저장"""
-import os
-
+"""탐지: YOLO(COCO), 초록 색 마커"""
 import cv2
 import numpy as np
 
@@ -18,7 +16,7 @@ def load_yolo():
     dummy = np.zeros((480, 640, 3), dtype=np.uint8)
     result = yolo.predict(source=dummy, imgsz=YOLO_IMGSZ, verbose=False)[0]   # 첫 추론이 느린 것을 미리 처리
     name_to_id = {name: class_id for class_id, name in result.names.items()}
-    class_ids = [name_to_id[name] for name in YOLO_ITEMS + CARRIERS]
+    class_ids = [name_to_id[name] for name in YOLO_ITEMS]
     return yolo, class_ids
 
 
@@ -64,73 +62,3 @@ def detect_markers(frame):
         detections.append({"class": marker_class, "conf": 1.0, "bbox": (x, y, x + w, y + h)})
 
     return detections
-
-
-def to_gray(frame):
-    """배경 차분용: 흑백 + 큰 가우시안 블러 (작은 노이즈, 미세한 흔들림 무시)"""
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return cv2.GaussianBlur(gray, (DIFF_BLUR, DIFF_BLUR), 0)
-
-
-def detect_unknown(S, gray, known_bboxes):
-    """체크인 배경과 비교해 생긴 변화 중, 이미 아는 물건이 아닌 영역 = 모르는 물건
-    배경 차분 → 이진화 → 아는 물건 영역 제거 → 모폴로지 → Contour (02 섹션 기법)"""
-    if S["background"] is None:
-        return []
-
-    # 카메라 자동 노출로 화면 전체가 밝아지거나 어두워진 만큼은 빼고 비교
-    shift = np.median(gray.astype(np.int16) - S["background"].astype(np.int16))
-    adjusted = np.clip(gray.astype(np.int16) - shift, 0, 255).astype(np.uint8)
-    diff = cv2.absdiff(adjusted, S["background"])
-    _, mask = cv2.threshold(diff, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
-
-    for x1, y1, x2, y2 in known_bboxes:
-        cv2.rectangle(mask, (x1 - KNOWN_MARGIN, y1 - KNOWN_MARGIN), (x2 + KNOWN_MARGIN, y2 + KNOWN_MARGIN), 0, -1)
-
-    if cv2.countNonZero(mask) > UNKNOWN_MAX_RATIO * mask.size:
-        return []                                       # 조명이 바뀌었거나 사람이 화면을 가림
-
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=OPEN_ITER)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITER)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    height, width = gray.shape
-    detections = []
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area < UNKNOWN_MIN_AREA or area > UNKNOWN_MAX_AREA * gray.size:
-            continue
-        x, y, w, h = cv2.boundingRect(c)
-        if x <= UNKNOWN_EDGE or y <= UNKNOWN_EDGE or x + w >= width - UNKNOWN_EDGE or y + h >= height - UNKNOWN_EDGE:
-            continue                                    # 화면 밖에서 들어온 손·팔·사람
-        detections.append({"class": UNKNOWN_CLASS, "conf": 0.5, "bbox": (x, y, x + w, y + h)})
-    return detections
-
-
-def update_background(S, gray, object_bboxes):
-    """물체가 없는 영역만 배경을 천천히 갱신 (햇빛 변화 등으로 생기는 가짜 변화 방지)
-    물체가 있는 영역은 갱신하지 않으므로, 새로 놓인 물건이 배경에 묻히지 않음"""
-    if S["background"] is None:
-        return
-    mask = np.full(gray.shape, 255, dtype=np.uint8)
-    for x1, y1, x2, y2 in object_bboxes:
-        cv2.rectangle(mask, (x1 - KNOWN_MARGIN, y1 - KNOWN_MARGIN), (x2 + KNOWN_MARGIN, y2 + KNOWN_MARGIN), 0, -1)
-    background = S["background"].astype(np.float32)
-    cv2.accumulateWeighted(gray.astype(np.float32), background, BG_ALPHA, mask=mask)
-    S["background"] = background.astype(np.uint8)
-
-
-def save_roi(frame, bbox, path):
-    """BBox 영역을 잘라 저장 (06-B ROI 저장 방식: 임시 파일 → os.replace)"""
-    h, w = frame.shape[:2]
-    x1, y1 = max(0, bbox[0] - ROI_PAD), max(0, bbox[1] - ROI_PAD)
-    x2, y2 = min(w, bbox[2] + ROI_PAD), min(h, bbox[3] + ROI_PAD)
-    roi = frame[y1:y2, x1:x2].copy()
-    if roi.size == 0:
-        return False
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = path.replace(".jpg", "_tmp.jpg")
-    if not cv2.imwrite(tmp_path, roi):
-        return False
-    os.replace(tmp_path, path)
-    return True

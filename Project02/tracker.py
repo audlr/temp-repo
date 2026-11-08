@@ -1,13 +1,13 @@
-"""추적: 사진 사이 같은 물체 연결, 있음/챙김 판정
+"""추적: 사진 사이 같은 물체 연결, 있음/챙김 판정, 변화(생김·이동·사라짐) 기록, 위치 설명
 
-track 상태: candidate(확인 중) → present(있음) → taken(챙김) → (다시 보이면) present
-owner: unknown(체크인 전) / amenity(숙소 비품) / mine(내 소지품) / ignored(Gemma가 물건이 아니라고 판단)
+track 상태: candidate(확인 중) → present(있음) → taken(사라짐) → (다시 보이면) present
+owner: unknown(체크인 전) / amenity(체크인 때 있던 숙소 비품) / mine(체크인 후 생긴 내 물건)
 """
 import math
 from collections import deque
 
 from config import *
-from common import calculate_iou, track_name
+from common import calculate_iou, name_ko
 
 
 def new_track(S, det, now):
@@ -15,8 +15,8 @@ def new_track(S, det, now):
     return {"id": S["next_id"], "class": det["class"], "bbox": det["bbox"],
             "hits": deque([1], maxlen=STABLE_WINDOW), "status": "candidate",
             "owner": "mine" if S["mode"] == "WATCH" else "unknown",
-            "where": "", "first_seen": now, "last_seen": now,
-            "taken_at": None, "origin": None, "label": None, "label_requested": False}
+            "where": "", "anchor": center(det["bbox"]),
+            "first_seen": now, "last_seen": now, "taken_at": None}
 
 
 def match_detections(tracks, detections):
@@ -26,7 +26,7 @@ def match_detections(tracks, detections):
         for di, d in enumerate(detections):
             if t["class"] == d["class"]:
                 iou = calculate_iou(t["bbox"], d["bbox"])
-                if iou >= (UNKNOWN_MATCH_IOU if t["class"] == UNKNOWN_CLASS else MATCH_IOU):
+                if iou >= MATCH_IOU:
                     pairs.append((iou, ti, di))
 
     matched, used_t, used_d = [], set(), set()
@@ -41,53 +41,58 @@ def match_detections(tracks, detections):
 
 
 def confirm(S, t):
-    """candidate가 안정적으로 보이면 present로 확정. 같은 클래스의 '챙김' 기록이 있으면 그 기록을 되살림
-    (물건을 옮겨 놓은 경우 → IoU 매칭이 끊겨도 같은 물건으로 취급)"""
-    taken = [o for o in S["tracks"] if o["class"] == t["class"] and o["status"] == "taken" and o is not t]
-    if taken and t["class"] != UNKNOWN_CLASS:          # 모르는 물건끼리는 같은 물건인지 알 수 없으므로 제외
-        old = max(taken, key=lambda o: o["taken_at"])
-        old.update(bbox=t["bbox"], hits=t["hits"], status="present",
-                   last_seen=t["last_seen"], taken_at=None)
+    """candidate가 안정적으로 보이면 present로 확정
+    같은 종류인데 사라졌거나 이번 사진에서 안 보인 기록이 있으면 그 기록을 되살림
+    (물건을 멀리 옮긴 경우: IoU 매칭이 끊겨도 같은 물건으로 보고 '이동'으로 기록, 비품·내 물건 구분도 유지)"""
+    gone = [o for o in S["tracks"] if o is not t and o["class"] == t["class"]
+            and (o["status"] == "taken" or (o["status"] == "present" and o["last_seen"] < t["last_seen"]))]
+    if gone:
+        old = max(gone, key=lambda o: o["last_seen"])
+        old.update(bbox=t["bbox"], hits=t["hits"], status="present", last_seen=t["last_seen"], taken_at=None)
         S["tracks"].remove(t)
-        return old
+        return old, "moved"
     t["status"] = "present"
-    return t
+    return t, "appeared"
 
 
 def update_tracks(S, detections, now):
-    """탐지 결과로 track 갱신. 가방이 사라지면(출발) True 반환"""
+    """탐지 결과로 track 갱신. 이번 사진에서 생긴 변화 [(종류, track)] 반환 (appeared / moved / taken)"""
     matched, unmatched = match_detections(S["tracks"], detections)
     seen = set()
+    changes = []
 
     for t, d in matched:
         t.update(bbox=d["bbox"], last_seen=now)
         t["hits"].append(1)
         seen.add(t["id"])
+        if t["status"] == "present" and math.dist(center(d["bbox"]), t["anchor"]) > MOVE_PX:
+            t["anchor"] = center(d["bbox"])            # 조금씩 밀린 경우도 누적해서 이동으로 기록
+            changes.append(("moved", t))
 
-    departed = False
     for t in list(S["tracks"]):
         if t["id"] not in seen:
             t["hits"].append(0)
 
         if t["status"] == "candidate":
-            if sum(t["hits"]) >= (UNKNOWN_HITS if t["class"] == UNKNOWN_CLASS else STABLE_HITS):
-                confirm(S, t)
+            if sum(t["hits"]) >= STABLE_HITS:
+                confirmed, kind = confirm(S, t)
+                confirmed["anchor"] = center(confirmed["bbox"])
+                changes.append((kind, confirmed))
             elif now - t["last_seen"] > MISSING_SEC:
-                S["tracks"].remove(t)                           # 잠깐 보였던 오탐지 제거
+                S["tracks"].remove(t)                  # 잠깐 보였던 오탐지 제거
 
         elif t["status"] == "present" and now - t["last_seen"] > MISSING_SEC:
             t["status"], t["taken_at"] = "taken", t["last_seen"]
-            if t["class"] in CARRIERS:
-                departed = True
+            changes.append(("taken", t))
 
     for d in unmatched:
         S["tracks"].append(new_track(S, d, now))
 
-    return departed
+    return changes
 
 
 def summarize(t):
-    return {"id": t["id"], "class": t["class"], "name": track_name(t),
+    return {"id": t["id"], "class": t["class"], "name": name_ko(t["class"]),
             "where": t["where"], "status": t["status"], "owner": t["owner"],
             "first_seen": t["first_seen"], "last_seen": t["last_seen"], "taken_at": t["taken_at"]}
 
@@ -153,13 +158,11 @@ def describe_location(t, landmarks, shape):
     if not candidates:
         return screen_position(t["bbox"], shape)
     _, ref, side = min(candidates, key=lambda c: c[0])
-    return f"{track_name(ref)} {side}"
+    return f"{name_ko(ref['class'])} {side}"
 
 
 def update_locations(S, shape):
-    """지금 있는 물건마다 위치 설명 갱신. 챙긴 물건은 마지막으로 본 위치를 그대로 유지
-    기준 물건: 지금 있는 물건 중 비품·가방 포함, 무시 영역과 이름 없는 모르는 물건은 제외"""
-    present = [t for t in S["tracks"] if t["status"] == "present" and t["owner"] != "ignored"]
-    landmarks = [t for t in present if t["class"] != UNKNOWN_CLASS or t["label"]]
+    """지금 있는 물건마다 위치 설명 갱신 (기준 물건에는 숙소 비품도 포함). 사라진 물건은 마지막 위치를 유지"""
+    present = [t for t in S["tracks"] if t["status"] == "present"]
     for t in present:
-        t["where"] = describe_location(t, landmarks, shape)
+        t["where"] = describe_location(t, present, shape)

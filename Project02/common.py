@@ -4,19 +4,7 @@ import time
 
 import numpy as np
 
-from config import ITEM_NAMES_KO, CARRIERS
-
-
-def cleanup_old_files(folders, keep_sec, now):
-    """keep_sec이 지난 파일 삭제 (부재 사진, 모르는 물건 ROI를 기기에 오래 남기지 않기 위해)"""
-    for folder in folders:
-        if not os.path.isdir(folder):
-            continue
-        for file_name in os.listdir(folder):
-            path = os.path.join(folder, file_name)
-            if now - os.path.getmtime(path) > keep_sec:
-                os.remove(path)
-                print("[자동 삭제]", path)
+from config import ITEM_NAMES_KO
 
 
 def write_json(path, data):
@@ -55,7 +43,7 @@ def calculate_iou(bbox_a, bbox_b):
 
 def apply_nms(detections, iou_threshold):
     """클래스와 무관하게 겹치는 탐지 중 confidence가 가장 높은 것만 남김
-    (예: 같은 가방을 handbag과 backpack으로 동시에 잡은 경우)"""
+    (예: 같은 가방을 handbag과 backpack으로 동시에 잡은 경우, YOLO와 색 마커가 같은 물체를 잡은 경우)"""
     if len(detections) == 0:
         return []
 
@@ -71,36 +59,30 @@ def apply_nms(detections, iou_threshold):
     return keep
 
 
-def is_exception(item, exceptions):
-    """두고 가도 되는 물건: 클래스로 지정("umbrella") 또는 이름 붙인 물건을 id로 지정("id:3")"""
-    return item["class"] in exceptions or f"id:{item['id']}" in exceptions
-
-
-def is_my_item(item):
-    """내 소지품: 체크인 후 생긴 물건 (비품·무시 영역·들고 나가는 가방 제외)"""
-    return item["owner"] == "mine" and item["class"] not in CARRIERS
-
-
+# 체크아웃 판단 기준: vision·assistant가 같은 기준을 쓰도록 여기 한 곳에서 정의
+# item은 vision의 track이든 state.json의 물건 기록이든 같은 키(class, status, owner)를 가짐
 def is_left(item, exceptions):
-    """출발할 때 남아 있으면 안 되는 물건: 내 소지품 + 지금 있음 + 예외 아님"""
-    return item["status"] == "present" and is_my_item(item) and not is_exception(item, exceptions)
+    """두고 가면 안 되는 물건: 체크인 후 생긴 내 물건 + 지금 있음 + 두고 가도 된다고 하지 않음"""
+    return item["status"] == "present" and item["owner"] == "mine" and item["class"] not in exceptions
+
+
+def is_missing_amenity(item):
+    """체크인 때 있던 숙소 비품이 사라짐 (짐에 같이 넣었을 수 있음)"""
+    return item["status"] == "taken" and item["owner"] == "amenity"
 
 
 def name_ko(item_class):
     return ITEM_NAMES_KO.get(item_class, item_class)
 
 
-def track_name(t):
-    """vision 기록의 한국어 이름: Gemma가 붙인 이름이 있으면 그 이름, 없으면 클래스 이름"""
-    return t["label"] or name_ko(t["class"])
-
-
 def josa(word, pair):
-    """받침 유무에 따라 조사 선택. pair = ("이", "가"), ("은", "는"), ("을", "를")"""
+    """받침 유무에 따라 조사 선택. pair = ("이", "가"), ("은", "는"), ("을", "를"), ("으로", "로")"""
     last = word[-1]
     if "가" <= last <= "힣":
-        has_final = (ord(last) - ord("가")) % 28 != 0
-        return word + (pair[0] if has_final else pair[1])
+        final = (ord(last) - ord("가")) % 28
+        if pair == ("으로", "로") and final == 8:        # ㄹ 받침은 "로" (예: 물병로 X, 칼로 O)
+            return word + "로"
+        return word + (pair[0] if final else pair[1])
     return word + pair[1]
 
 
