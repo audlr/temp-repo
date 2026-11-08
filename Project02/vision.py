@@ -16,9 +16,18 @@ from tracker import update_tracks, summarize
 
 
 def open_camera():
+    """GStreamer(수업 방식)로 열고, 실패하면 V4L2로 직접 열기"""
     if USE_GSTREAMER:
-        return cv2.VideoCapture(PIPELINE, cv2.CAP_GSTREAMER)   # Jetson
-    return cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(PIPELINE, cv2.CAP_GSTREAMER)
+        if cap.isOpened():
+            return cap
+        print("[카메라] GStreamer로 열지 못해 V4L2로 다시 시도합니다.")
+    cap = cv2.VideoCapture(CAMERA_DEVICE, cv2.CAP_V4L2)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 15)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)        # 오래된 프레임이 쌓이지 않도록
+    return cap
 
 
 def screen_name(t):

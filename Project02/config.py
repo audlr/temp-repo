@@ -24,15 +24,17 @@ PIPER_MODEL = "src/models/Piper/ko_KR-kss-medium.onnx"
 OUTPUT_FILE = "src/audio/response.wav"
 
 
+# 사진은 2초마다 한 장만 쓰므로 30fps가 필요 없음 → 15fps로 낮춰 USB 대역폭·전력 부담 감소
+CAMERA_DEVICE = "/dev/video0"
 PIPELINE = (
-    "v4l2src device=/dev/video0 ! "
-    "video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! "
+    f"v4l2src device={CAMERA_DEVICE} ! "
+    "video/x-raw,format=YUY2,width=640,height=480,framerate=15/1 ! "
     "videoconvert ! video/x-raw,format=BGR ! "
     "queue leaky=downstream max-size-buffers=1 "
     "max-size-bytes=0 max-size-time=0 ! "
     "appsink drop=true max-buffers=1 sync=false"
 )
-USE_GSTREAMER = True    # False면 cv2.VideoCapture(0) (노트북 웹캠)
+USE_GSTREAMER = True    # False: GStreamer 없이 V4L2로 직접 열기 (GStreamer 경고로 자꾸 끊길 때 시도)
 CAMERA_RETRY = 10       # 프레임을 이 횟수만큼 연속으로 못 읽으면 카메라를 다시 엶
 CAMERA_REOPEN_MAX = 5   # 다시 열기를 이 횟수만큼 실패하면 종료
 
