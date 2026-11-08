@@ -54,10 +54,10 @@ NMS_IOU = 0.6           # YOLO + 색 마커 결과를 합친 뒤의 클래스 �
 # 소지품으로 다룰 COCO 클래스
 YOLO_ITEMS = [
     "cell phone", "laptop", "book", "bottle", "umbrella",
-    "handbag", "cup", "remote", "toothbrush", "scissors",
+    "handbag", "cup", "remote", "mouse", "toothbrush", "scissors",
 ]
 # 작고 생김새가 단순해 오탐이 잦은 클래스는 더 높은 기준 적용 (실제 화면을 보며 조정)
-CLASS_CONF = {"remote": 0.6, "toothbrush": 0.6, "scissors": 0.6}
+CLASS_CONF = {"mouse": 0.7, "remote": 0.6, "toothbrush": 0.6, "scissors": 0.6}
 # 출발 판단용 (들고 나가는 가방)
 CARRIERS = ["backpack", "suitcase"]
 
@@ -77,7 +77,7 @@ MARKER_MIN_AREA = 150   # 마커로 인정할 최소 윤곽선 면적
 ITEM_NAMES_KO = {
     "cell phone": "휴대폰", "laptop": "노트북", "book": "책", "bottle": "물병",
     "umbrella": "우산", "handbag": "가방", "cup": "컵", "remote": "리모컨",
-    "toothbrush": "칫솔", "scissors": "가위",
+    "mouse": "마우스", "toothbrush": "칫솔", "scissors": "가위",
     "backpack": "배낭", "suitcase": "캐리어",
     "unknown": "확인 중인 물건",
 }
