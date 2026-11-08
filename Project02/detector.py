@@ -31,11 +31,14 @@ def detect_yolo(yolo, class_ids, frame):
 
     detections = []
     for box in result.boxes:
-        class_id = int(box.cls[0].item())
+        class_name = result.names[int(box.cls[0].item())]
+        conf = float(box.conf[0].item())
+        if conf < CLASS_CONF.get(class_name, YOLO_CONF):     # 오탐이 잦은 클래스는 기준을 높게
+            continue
         x1, y1, x2, y2 = box.xyxy[0].cpu().tolist()
         detections.append({
-            "class": result.names[class_id],
-            "conf": round(float(box.conf[0].item()), 3),
+            "class": class_name,
+            "conf": round(conf, 3),
             "bbox": (int(x1), int(y1), int(x2), int(y2)),
         })
     return detections
