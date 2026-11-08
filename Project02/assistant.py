@@ -85,6 +85,8 @@ def decide(intent, state, control, now):
         uncertain = ", ".join(i["name"] for i in mine if i["status"] == "missing")
         if present and taken:
             return f"지금 꺼내 둔 물건은 {josa(present, ('이고', '고'))}, 챙긴 물건은 {josa(taken, ('이에요', '예요'))}."
+        if taken and uncertain:
+            return f"챙긴 것으로 기록된 물건은 {taken}이고, 화면에서 확인되지 않는 물건은 {uncertain}이에요. 확인해 주세요."
         if present and uncertain:
             return f"지금 꺼내 둔 물건은 {present}이고, 화면에서 확인되지 않는 물건은 {uncertain}이에요. 챙기셨는지 확인해 주세요."
         if uncertain:
