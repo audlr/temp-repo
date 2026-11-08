@@ -19,17 +19,19 @@ def group_by_where(items):
 
 
 def checkout_sentence(left, missing, uncertain=None):
-    """체크아웃 안내: 남은 내 물건 + 사라진 비품 + 화면에서 확인되지 않는 내 물건"""
+    """체크아웃 안내: 남은 내 물건 + 화면에서 확인되지 않는 내 물건 + 사라진 비품"""
     uncertain = uncertain or []
     sentences = []
     if left:
         sentences.append(f"잠깐만요! {josa(group_by_where(left), ('이', '가'))} 아직 남아 있어요.")
+    elif uncertain or missing:
+        sentences.append("남은 물건은 없어요.")
+    if uncertain:
+        names = ", ".join(i["name"] for i in uncertain)
+        sentences.append(f"확인되지 않는 물건은 {josa(names, ('이에요', '예요'))}.")
     if missing:
         names = ", ".join(i["name"] for i in missing)
         sentences.append(f"그리고 숙소 비품인 {josa(names, ('이', '가'))} 화면에서 확인되지 않아요. 원래 위치에 있는지 확인해 주세요.")
-    if uncertain:
-        names = ", ".join(i["name"] for i in uncertain)
-        sentences.append(f"화면에서 확인되지 않는 내 물건은 {josa(names, ('이에요', '예요'))}. 실제로 챙기셨는지 확인해 주세요.")
     if not sentences:
         return "빠뜨린 물건이 없어요. 조심히 다녀오세요!"
     return " ".join(sentences)
