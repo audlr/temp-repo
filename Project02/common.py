@@ -4,10 +4,9 @@ import time
 
 import numpy as np
 
-from config import ITEM_NAMES_KO, CARRIERS
+from config import ITEM_NAMES_KO, CARRIERS, ZONES, OUTSIDE_ZONE
 
 
-# ======================== 파일 정리 ========================
 def cleanup_old_files(folders, keep_sec, now):
     """keep_sec이 지난 파일 삭제 (부재 사진, 모르는 물건 ROI를 기기에 오래 남기지 않기 위해)"""
     for folder in folders:
@@ -20,7 +19,6 @@ def cleanup_old_files(folders, keep_sec, now):
                 print("[자동 삭제]", path)
 
 
-# ======================== JSON 입출력 ========================
 def write_json(path, data):
     """임시 파일에 먼저 쓴 뒤 os.replace로 교체 (06-A-7 방식, 읽는 쪽이 쓰다 만 파일을 읽지 않음)"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -39,7 +37,6 @@ def read_json(path, default=None):
         return default
 
 
-# ======================== IoU / NMS (과제03_04 구현) ========================
 def calculate_iou(bbox_a, bbox_b):
     """(x1, y1, x2, y2) 두 박스의 IoU"""
     xa_1, ya_1, xa_2, ya_2 = bbox_a
@@ -74,8 +71,17 @@ def apply_nms(detections, iou_threshold):
     return keep
 
 
-# ======================== 남은 물건 판단 (vision·assistant 공통) ========================
-# 두 프로세스가 같은 기준으로 판단하도록 한 곳에서 정의.
+def zone_of(bbox):
+    """BBox 중심점이 들어 있는 구역"""
+    cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    for zone in ZONES:
+        x1, y1, x2, y2 = zone["rect"]
+        if x1 <= cx < x2 and y1 <= cy < y2:
+            return zone
+    return OUTSIDE_ZONE
+
+
+# 남은 물건 판단 기준: vision·assistant가 같은 기준을 쓰도록 여기 한 곳에서 정의
 # item은 vision의 track이든 state.json의 물건 기록이든 같은 키(id, class, status, owner)를 가짐
 def is_exception(item, exceptions):
     """두고 가도 되는 물건: 클래스로 지정("umbrella") 또는 이름 붙인 물건을 id로 지정("id:3")"""
@@ -92,7 +98,6 @@ def is_left(item, exceptions):
     return item["status"] == "present" and is_my_item(item) and not is_exception(item, exceptions)
 
 
-# ======================== 한국어 표현 ========================
 def name_ko(item_class):
     return ITEM_NAMES_KO.get(item_class, item_class)
 

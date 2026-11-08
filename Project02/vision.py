@@ -1,237 +1,24 @@
+"""프로세스 1: 카메라 → 사진 처리 → state.json / event.json, control.json 명령 반영, 화면 표시"""
 import os
-import cv2
 import time
-import numpy as np
 from collections import deque
+
+import cv2
+import numpy as np
 
 import away
 from config import *
-from common import (write_json, read_json, apply_nms, calculate_iou, track_name,
+from common import (write_json, read_json, apply_nms, track_name,
                     is_exception, is_my_item, is_left, cleanup_old_files)
-
-
-# ======================== 초기화 ========================
-kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (MORPH_K, MORPH_K))
-
-
-def load_yolo():
-    """YOLO 엔진 로드 + 사용할 클래스 이름을 COCO 클래스 ID로 변환 (04-D-6 클래스 지정 탐지)"""
-    from ultralytics import YOLO
-    yolo = YOLO(YOLO_MODEL_PATH)
-    name_to_id = {name: class_id for class_id, name in yolo.names.items()}
-    class_ids = [name_to_id[name] for name in YOLO_ITEMS + CARRIERS]
-    return yolo, class_ids
+from detector import (load_yolo, detect_yolo, detect_markers, to_gray,
+                      detect_unknown, update_background, save_roi)
+from tracker import update_tracks, summarize
 
 
 def open_camera():
     if USE_GSTREAMER:
         return cv2.VideoCapture(PIPELINE, cv2.CAP_GSTREAMER)   # Jetson
-    return cv2.VideoCapture(0)                                 # 노트북 웹캠
-
-
-# ======================== 1. 탐지 ========================
-def detect_yolo(yolo, class_ids, frame):
-    """YOLO 탐지 결과를 dict 리스트로 변환 (06-A-2 JSON 구조와 같은 필드)"""
-    results = yolo.predict(source=frame, conf=YOLO_CONF, iou=YOLO_IOU, classes=class_ids,
-                           imgsz=YOLO_IMGSZ, verbose=False)
-    result = results[0]
-
-    detections = []
-    for box in result.boxes:
-        class_id = int(box.cls[0].item())
-        x1, y1, x2, y2 = box.xyxy[0].cpu().tolist()
-        detections.append({
-            "class": result.names[class_id],
-            "conf": round(float(box.conf[0].item()), 3),
-            "bbox": (int(x1), int(y1), int(x2), int(y2)),
-        })
-    return detections
-
-
-def detect_markers(frame):
-    """COCO에 없는 물건: 색 스티커를 LAB 변환 → 블러 → 색 분할 → 모폴로지 → 가장 큰 윤곽선의 BBox (Project01)
-    LAB의 L(밝기) 범위를 넓게 잡아 두어 밝기 보정(CLAHE) 없이도 조명 변화에 강함"""
-    blur = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2LAB), (BLUR_K, BLUR_K), 0)
-    detections = []
-
-    for marker_class, marker in MARKERS.items():
-        mask = cv2.inRange(blur, marker["low"], marker["high"])
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=OPEN_ITER)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITER)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        contours = [c for c in contours if cv2.contourArea(c) > MARKER_MIN_AREA]
-        if len(contours) == 0:
-            continue
-
-        largest = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest)        # (x, y, w, h) → (x1, y1, x2, y2) 변환 (04-A)
-        detections.append({"class": marker_class, "conf": 1.0, "bbox": (x, y, x + w, y + h)})
-
-    return detections
-
-
-def to_gray(frame):
-    """배경 차분용: 흑백 + 큰 가우시안 블러 (작은 노이즈, 미세한 흔들림 무시)"""
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return cv2.GaussianBlur(gray, (DIFF_BLUR, DIFF_BLUR), 0)
-
-
-def detect_unknown(S, gray, known_bboxes):
-    """체크인 배경과 비교해 생긴 변화 중, 이미 아는 물건이 아닌 영역 = 모르는 물건
-    배경 차분 → 이진화 → 아는 물건 영역 제거 → 모폴로지 → Contour (02 섹션 기법)"""
-    if S["background"] is None:
-        return []
-
-    diff = cv2.absdiff(gray, S["background"])
-    _, mask = cv2.threshold(diff, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
-
-    for x1, y1, x2, y2 in known_bboxes:
-        cv2.rectangle(mask, (x1 - KNOWN_MARGIN, y1 - KNOWN_MARGIN), (x2 + KNOWN_MARGIN, y2 + KNOWN_MARGIN), 0, -1)
-
-    if cv2.countNonZero(mask) > UNKNOWN_MAX_RATIO * mask.size:
-        return []                                       # 조명이 바뀌었거나 사람이 화면을 가림
-
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=OPEN_ITER)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITER)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    detections = []
-    for c in contours:
-        if cv2.contourArea(c) < UNKNOWN_MIN_AREA:
-            continue
-        x, y, w, h = cv2.boundingRect(c)
-        bbox = (x, y, x + w, y + h)
-        if zone_of(bbox) is not OUTSIDE_ZONE:            # 구역 안에 놓인 것만
-            detections.append({"class": UNKNOWN_CLASS, "conf": 0.5, "bbox": bbox})
-    return detections
-
-
-def update_background(S, gray, object_bboxes):
-    """물체가 없는 영역만 배경을 천천히 갱신 (햇빛 변화 등으로 생기는 가짜 변화 방지)
-    물체가 있는 영역은 갱신하지 않으므로, 새로 놓인 물건이 배경에 묻히지 않음"""
-    if S["background"] is None:
-        return
-    mask = np.full(gray.shape, 255, dtype=np.uint8)
-    for x1, y1, x2, y2 in object_bboxes:
-        cv2.rectangle(mask, (x1 - KNOWN_MARGIN, y1 - KNOWN_MARGIN), (x2 + KNOWN_MARGIN, y2 + KNOWN_MARGIN), 0, -1)
-    background = S["background"].astype(np.float32)
-    cv2.accumulateWeighted(gray.astype(np.float32), background, BG_ALPHA, mask=mask)
-    S["background"] = background.astype(np.uint8)
-
-
-def save_roi(frame, bbox, path):
-    """BBox 영역을 잘라 저장 (06-B ROI 저장 방식: 임시 파일 → os.replace)"""
-    h, w = frame.shape[:2]
-    x1, y1 = max(0, bbox[0] - ROI_PAD), max(0, bbox[1] - ROI_PAD)
-    x2, y2 = min(w, bbox[2] + ROI_PAD), min(h, bbox[3] + ROI_PAD)
-    roi = frame[y1:y2, x1:x2].copy()
-    if roi.size == 0:
-        return False
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = path.replace(".jpg", "_tmp.jpg")
-    if not cv2.imwrite(tmp_path, roi):
-        return False
-    os.replace(tmp_path, path)
-    return True
-
-
-# ======================== 2. 구역 판정 ========================
-def zone_of(bbox):
-    """BBox 중심점이 들어 있는 구역"""
-    cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
-    for zone in ZONES:
-        x1, y1, x2, y2 = zone["rect"]
-        if x1 <= cx < x2 and y1 <= cy < y2:
-            return zone
-    return OUTSIDE_ZONE
-
-
-# ======================== 3. 추적 ========================
-# track 상태: candidate(확인 중) → present(있음) → taken(챙김) → (다시 보이면) present
-# owner: unknown(체크인 전) / amenity(숙소 비품) / mine(내 소지품) / ignored(Gemma가 물건이 아니라고 판단)
-def new_track(S, det, now):
-    S["next_id"] += 1
-    return {"id": S["next_id"], "class": det["class"], "bbox": det["bbox"],
-            "hits": deque([1], maxlen=STABLE_WINDOW), "status": "candidate",
-            "owner": "mine" if S["mode"] == "WATCH" else "unknown",
-            "zone": zone_of(det["bbox"]), "first_seen": now, "last_seen": now,
-            "taken_at": None, "origin": None, "label": None, "label_requested": False}
-
-
-def match_detections(tracks, detections):
-    """같은 클래스끼리 IoU가 가장 큰 쌍부터 매칭 (Greedy). (track, det) 쌍과 남은 탐지 반환"""
-    pairs = []
-    for ti, t in enumerate(tracks):
-        for di, d in enumerate(detections):
-            if t["class"] == d["class"]:
-                iou = calculate_iou(t["bbox"], d["bbox"])
-                if iou >= MATCH_IOU:
-                    pairs.append((iou, ti, di))
-
-    matched, used_t, used_d = [], set(), set()
-    for iou, ti, di in sorted(pairs, reverse=True):
-        if ti not in used_t and di not in used_d:
-            matched.append((tracks[ti], detections[di]))
-            used_t.add(ti)
-            used_d.add(di)
-
-    unmatched = [d for di, d in enumerate(detections) if di not in used_d]
-    return matched, unmatched
-
-
-def confirm(S, t):
-    """candidate가 안정적으로 보이면 present로 확정. 같은 클래스의 '챙김' 기록이 있으면 그 기록을 되살림
-    (물건을 옮겨 놓은 경우 → IoU 매칭이 끊겨도 같은 물건으로 취급)"""
-    taken = [o for o in S["tracks"] if o["class"] == t["class"] and o["status"] == "taken" and o is not t]
-    if taken and t["class"] != UNKNOWN_CLASS:          # 모르는 물건끼리는 같은 물건인지 알 수 없으므로 제외
-        old = max(taken, key=lambda o: o["taken_at"])
-        old.update(bbox=t["bbox"], hits=t["hits"], status="present", zone=t["zone"],
-                   last_seen=t["last_seen"], taken_at=None)
-        S["tracks"].remove(t)
-        return old
-    t["status"] = "present"
-    return t
-
-
-def update_tracks(S, detections, now):
-    """탐지 결과로 track 갱신. 가방이 사라지면(출발) True 반환"""
-    matched, unmatched = match_detections(S["tracks"], detections)
-    seen = set()
-
-    for t, d in matched:
-        t.update(bbox=d["bbox"], zone=zone_of(d["bbox"]), last_seen=now)
-        t["hits"].append(1)
-        seen.add(t["id"])
-
-    departed = False
-    for t in list(S["tracks"]):
-        if t["id"] not in seen:
-            t["hits"].append(0)
-
-        if t["status"] == "candidate":
-            if sum(t["hits"]) >= STABLE_HITS:
-                S["changes"].append(("appeared", confirm(S, t)))
-            elif now - t["last_seen"] > MISSING_SEC:
-                S["tracks"].remove(t)                           # 잠깐 보였던 오탐지 제거
-
-        elif t["status"] == "present" and now - t["last_seen"] > MISSING_SEC:
-            t["status"], t["taken_at"] = "taken", t["last_seen"]
-            S["changes"].append(("taken", t))
-            if t["class"] in CARRIERS:
-                departed = True
-
-    for d in unmatched:
-        S["tracks"].append(new_track(S, d, now))
-
-    return departed
-
-
-# ======================== 4. 상태 / 이벤트 ========================
-def summarize(t):
-    return {"id": t["id"], "class": t["class"], "name": track_name(t),
-            "zone": t["zone"]["name"], "status": t["status"], "owner": t["owner"],
-            "first_seen": t["first_seen"], "last_seen": t["last_seen"], "taken_at": t["taken_at"]}
+    return cv2.VideoCapture(0)
 
 
 def screen_name(t):
@@ -328,7 +115,6 @@ def run_command(S, now):
         reset(S)
 
 
-# ======================== 5. 화면 표시 ========================
 def put_text(img, text, org, color=WHITE, scale=TEXT):
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, BLACK, 3, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 1, cv2.LINE_AA)
@@ -387,7 +173,6 @@ def draw(S, frame, now):
     put_text(frame, "i: check-in  a: away on/off  d: depart check  c: reset  q: quit", (PAD, h - 10), WHITE)
 
 
-# ======================== 6. 상태 관리 ========================
 def new_state():
     S = {"mode": "READY", "tracks": [], "next_id": 0, "exceptions": [],
          "session": int(time.time()), "control_seq": 0, "event_seq": 0, "alert_until": 0, "alert_ids": [],
@@ -419,7 +204,6 @@ def handle_key(S, key, now):
     return True
 
 
-# ======================== 7. 사진 처리 ========================
 def snapshot(S, yolo, class_ids, frame, now):
     """사진 한 장: 탐지(YOLO + 색 마커) → NMS → 모르는 물건 → 추적 → 출발 판정 → 명령 실행 → 저장"""
     gray = to_gray(frame)                     # 배경 차분용

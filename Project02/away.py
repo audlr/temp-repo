@@ -15,7 +15,6 @@ from config import AWAY_DIR, AWAY_BUFFER, CARRIERS, RED
 from common import josa, clock_ko, track_name
 
 
-# ======================== vision.py 쪽 ========================
 def new_away_state():
     return {"away": False, "away_log": [], "away_buffer": deque(maxlen=AWAY_BUFFER), "away_saved": set()}
 
@@ -72,7 +71,6 @@ def draw_status(S, frame):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, RED, 1, cv2.LINE_AA)
 
 
-# ======================== assistant.py 쪽 ========================
 def away_report(state, returned):
     """외출 기록 → '다녀오셨어요. 7시 13분에 침대 왼쪽 배낭이 사라졌어요. 사진 4장을 저장해 뒀어요.'"""
     log = state.get("away_log", [])
