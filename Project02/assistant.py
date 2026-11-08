@@ -11,9 +11,6 @@ from intent import parse_intent, name_item_image
 from speech import speech_to_text, text_to_speech
 
 
-QUIT_WORDS = {"q", "ㅂ", "quit", "exit", "종료"}     # 한글 입력 상태에서 q를 누르면 "ㅂ"이 입력됨
-
-
 def my_items(state):
     return [i for i in state["items"] if is_my_item(i)]
 
@@ -218,7 +215,7 @@ def main():
 
     print("Checkout Assistant 시작")
     print("Enter: 음성 질문 녹음" if USE_STT else "질문을 입력하고 Enter")
-    print("텍스트를 입력하고 Enter: 텍스트로 질문 / q(또는 종료): 종료\n")
+    print("텍스트를 입력하고 Enter: 텍스트로 질문 / q: 종료\n")
 
     while True:
         try:
@@ -236,7 +233,7 @@ def main():
             if line is None:
                 continue
             line = line.strip()
-            if line.lower() in QUIT_WORDS:
+            if line == "q":
                 break
             if line == "" and USE_STT:
                 print("말씀해 주세요...")
