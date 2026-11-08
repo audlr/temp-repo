@@ -24,7 +24,6 @@ def open_camera():
     cap = cv2.VideoCapture(CAMERA_DEVICE, cv2.CAP_V4L2)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 15)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)        # 오래된 프레임이 쌓이지 않도록
     return cap
 
