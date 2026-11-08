@@ -33,7 +33,7 @@ def checkout_sentence(left, missing, uncertain=None):
         names = ", ".join(i["name"] for i in missing)
         sentences.append(f"그리고 숙소 비품인 {josa(names, ('이', '가'))} 화면에서 확인되지 않아요. 원래 위치에 있는지 확인해 주세요.")
     if not sentences:
-        return "빠뜨린 물건이 없어요. 조심히 다녀오세요!"
+        return "빠뜨린 물건이 없어요. 조심히 가세요!"
     return " ".join(sentences)
 
 
