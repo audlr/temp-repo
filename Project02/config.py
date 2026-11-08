@@ -10,7 +10,7 @@ EVENT_JSON = "src/json/checkout_event.json"      # vision → assistant : 체크
 CONTROL_JSON = "src/json/checkout_control.json"  # assistant → vision : 예외 목록, 명령
 
 # STT / TTS (06 섹션 설정 그대로)
-MIC_DEVICE = "plughw:0,0"   # arecord -l 의 "card 번호, device 번호". "auto"면 목록에서 USB 마이크를 찾아 사용
+MIC_DEVICE = "plughw:0,0"   # arecord -l 의 "card 번호, device 번호"
 AUDIO_FILE = "src/audio/input.wav"
 WHISPER_PATH = "whisper.cpp/build-cpu/bin/whisper-cli"
 WHISPER_MODEL = "whisper.cpp/models/ggml-base.bin"   # 수업 모델. tiny는 가볍지만 한국어 인식률이 많이 떨어짐
@@ -21,19 +21,15 @@ PIPER_MODEL = "src/models/Piper/ko_KR-kss-medium.onnx"
 OUTPUT_FILE = "src/audio/response.wav"
 
 
-# 수업 코드와 같은 설정 (카메라가 지원하는 해상도·fps 조합이어야 열림)
-CAMERA_DEVICE = "/dev/video0"
+# 수업 코드와 같은 카메라 설정
 PIPELINE = (
-    f"v4l2src device={CAMERA_DEVICE} ! "
+    "v4l2src device=/dev/video0 ! "
     "video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! "
     "videoconvert ! video/x-raw,format=BGR ! "
     "queue leaky=downstream max-size-buffers=1 "
     "max-size-bytes=0 max-size-time=0 ! "
     "appsink drop=true max-buffers=1 sync=false"
 )
-USE_GSTREAMER = True    # False: GStreamer 없이 V4L2로 직접 열기
-CAMERA_RETRY = 10       # 프레임을 이 횟수만큼 연속으로 못 읽으면 카메라를 다시 엶
-CAMERA_REOPEN_MAX = 5   # 다시 열기를 이 횟수만큼 실패하면 종료
 
 
 # Jetson 없이 PC에서 테스트할 때 False로 두면 키보드 입력 / 화면 출력으로 대체

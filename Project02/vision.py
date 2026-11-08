@@ -16,20 +16,6 @@ from detector import load_yolo, detect_yolo, detect_markers
 from tracker import update_tracks, update_locations, summarize
 
 
-def open_camera():
-    """GStreamer(수업 방식)로 열고, 실패하면 V4L2로 직접 열기"""
-    if USE_GSTREAMER:
-        cap = cv2.VideoCapture(PIPELINE, cv2.CAP_GSTREAMER)
-        if cap.isOpened():
-            return cap
-        print("[카메라] GStreamer로 열지 못해 V4L2로 다시 시도합니다.")
-    cap = cv2.VideoCapture(CAMERA_DEVICE, cv2.CAP_V4L2)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)        # 오래된 프레임이 쌓이지 않도록
-    return cap
-
-
 def log_changes(S, changes, now):
     """이번 사진에서 생긴 변화를 터미널에 출력하고 최근 20개를 기록 (체크인 후에만)"""
     if S["mode"] != "WATCH":
@@ -206,7 +192,7 @@ def process(S, yolo, class_ids, frame, now):
 
 def main():
     yolo, class_ids = load_yolo()
-    cap = open_camera()
+    cap = cv2.VideoCapture(PIPELINE, cv2.CAP_GSTREAMER)
     if not cap.isOpened():
         print("카메라를 열 수 없습니다.")
         return
@@ -219,27 +205,11 @@ def main():
     S["event_seq"] = (read_json(EVENT_JSON) or {}).get("seq", 0)   # 다시 실행해도 번호가 이어지도록 (assistant가 놓치지 않게)
     print("Checkout Checker 시작 - 숙소 비품만 있는 상태에서 i 키(또는 '체크인')")
 
-    fails = 0
     while True:
         ret, frame = cap.read()
         now = time.time()
         if not ret:
-            # USB 카메라가 잠깐 끊기거나 읽기에 실패해도 바로 종료하지 않고 다시 연결 시도
-            fails += 1
-            if fails == 1:
-                print("[카메라] 프레임을 읽지 못했습니다. 다시 연결을 시도합니다...")
-            if fails % CAMERA_RETRY == 0:
-                cap.release()
-                time.sleep(1.0)
-                cap = open_camera()
-            if fails >= CAMERA_RETRY * CAMERA_REOPEN_MAX:
-                print("[카메라] 연결이 끊겼습니다. 케이블과 /dev/video 장치를 확인하세요.")
-                break
-            time.sleep(0.1)
-            continue
-        if fails:
-            print("[카메라] 다시 연결됨")
-            fails = 0
+            break
 
         cv2.imshow(WIN, process(S, yolo, class_ids, frame, now))
         if not handle_key(S, cv2.waitKey(1) & 0xFF):

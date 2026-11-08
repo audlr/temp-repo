@@ -17,12 +17,11 @@ def write_json(path, data):
 
 
 def read_json(path, default=None):
-    """파일이 없거나 읽는 도중 깨져 있으면 default 반환"""
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
+    """파일이 없으면 default 반환 (06-A-7처럼 os.path.exists로 확인. 쓰는 쪽이 os.replace를 써서 깨진 파일은 읽지 않음)"""
+    if not os.path.exists(path):
         return default
+    with open(path, "r", encoding="utf-8") as file:
+        return json.load(file)
 
 
 def calculate_iou(bbox_a, bbox_b):

@@ -7,7 +7,7 @@ import select
 from config import *
 from common import write_json, read_json, name_ko, josa, ago_ko, is_left, is_missing_amenity
 from intent import parse_intent
-from speech import speech_to_text, text_to_speech, check_audio
+from speech import speech_to_text, text_to_speech
 
 
 def group_by_where(items):
@@ -153,39 +153,31 @@ def main():
     control = read_json(CONTROL_JSON) or {"seq": 0, "command": None, "exceptions": []}
     last_event_seq = (read_json(EVENT_JSON) or {}).get("seq", 0)     # 시작 전에 난 이벤트는 무시
 
-    for problem in check_audio():
-        print("[점검]", problem)
-
     print("Checkout Assistant 시작")
     print("Enter: 음성 질문 녹음" if USE_STT else "질문을 입력하고 Enter")
     print("텍스트를 입력하고 Enter: 텍스트로 질문 / q: 종료\n")
 
     while True:
-        try:
-            # 1. 카메라 창에서 o 키로 체크아웃했는지 확인
-            event = read_json(EVENT_JSON)
-            if event and event.get("seq", 0) > last_event_seq:
-                last_event_seq = event["seq"]
-                if event.get("reason") == "key":
-                    handle_checkout_event(event)
+        # 1. 카메라 창에서 o 키로 체크아웃했는지 확인
+        event = read_json(EVENT_JSON)
+        if event and event.get("seq", 0) > last_event_seq:
+            last_event_seq = event["seq"]
+            if event.get("reason") == "key":
+                handle_checkout_event(event)
 
-            # 2. 사용자 입력 확인 (0.1초 대기, CPU를 계속 쓰지 않도록)
-            line = read_line_nonblocking(0.1)
-            if line is None:
-                continue
-            line = line.strip()
-            if line == "q":
-                break
-            if line == "" and USE_STT:
-                print(f"말씀해 주세요... ({RECORD_SECONDS}초 녹음)")
-                line = speech_to_text()
-                print(f"[STT] {line or '(인식된 말 없음)'}")
-            if line:
-                handle_question(line, control)
-
-        except (OSError, RuntimeError) as error:
-            # 마이크·스피커·whisper 실행 오류로 프로그램 전체가 멈추지 않도록, 원인을 그대로 보여 줌
-            print("[오류]", error)
+        # 2. 사용자 입력 확인 (0.1초 대기, CPU를 계속 쓰지 않도록)
+        line = read_line_nonblocking(0.1)
+        if line is None:
+            continue
+        line = line.strip()
+        if line == "q":
+            break
+        if line == "" and USE_STT:
+            print(f"말씀해 주세요... ({RECORD_SECONDS}초 녹음)")
+            line = speech_to_text()
+            print(f"[STT] {line or '(인식된 말 없음)'}")
+        if line:
+            handle_question(line, control)
 
 
 if __name__ == "__main__":
