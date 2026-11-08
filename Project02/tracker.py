@@ -72,6 +72,8 @@ def update_tracks(S, detections, now):
         if previous_status == "missing":
             t["status"], t["missing_since"] = "present", None
             t["taken_at"] = None
+            t["anchor"] = center(d["bbox"])
+            t["anchor_bbox"] = d["bbox"]
             changes.append(("returned", t))
         elif t["status"] == "present":
             reference_bbox = t.get("anchor_bbox", t["bbox"])
