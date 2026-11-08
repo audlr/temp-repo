@@ -38,7 +38,7 @@ USE_TTS = True          # False: 음성 대신 터미널 출력만
 USE_LLM = True          # False: Gemma 없이 키워드 규칙으로 의도 분석
 
 
-YOLO_CONF = 0.4         # Confidence Threshold (0.25는 오탐이 많아 높임)
+YOLO_CONF = 0.3         # 사진 한 장 기준. 오탐은 STABLE_HITS(4장 중 3장)로 거르므로 높게 잡지 않음 (0.4는 침대 위 휴대폰 등을 놓침)
 YOLO_IOU = 0.5          # YOLO 내부 NMS IoU Threshold
 YOLO_IMGSZ = 640        # 입력 크기. TensorRT 엔진은 만들 때의 imgsz로 고정되므로 같은 값이어야 함 (수업 엔진: 기본값 640)
 NMS_IOU = 0.6           # YOLO + 색 마커 결과를 합친 뒤의 클래스 무관 NMS
