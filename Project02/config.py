@@ -33,6 +33,8 @@ PIPELINE = (
     "appsink drop=true max-buffers=1 sync=false"
 )
 USE_GSTREAMER = True    # False면 cv2.VideoCapture(0) (노트북 웹캠)
+CAMERA_RETRY = 10       # 프레임을 이 횟수만큼 연속으로 못 읽으면 카메라를 다시 엶
+CAMERA_REOPEN_MAX = 5   # 다시 열기를 이 횟수만큼 실패하면 종료
 
 
 # Jetson 없이 PC에서 테스트할 때 False로 두면 키보드 입력 / 화면 출력으로 대체

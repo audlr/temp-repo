@@ -271,11 +271,27 @@ def main():
         S["exceptions"] = [e for e in control.get("exceptions", []) if not e.startswith("id:")]
     print("Checkout Checker 시작 - 숙소 비품만 있는 상태에서 i 키(또는 '체크인')")
 
+    fails = 0
     while True:
         ret, frame = cap.read()
         now = time.time()
         if not ret:
-            break
+            # USB 카메라가 잠깐 끊기거나 읽기에 실패해도 바로 종료하지 않고 다시 연결 시도
+            fails += 1
+            if fails == 1:
+                print("[카메라] 프레임을 읽지 못했습니다. 다시 연결을 시도합니다...")
+            if fails % CAMERA_RETRY == 0:
+                cap.release()
+                time.sleep(1.0)
+                cap = open_camera()
+            if fails >= CAMERA_RETRY * CAMERA_REOPEN_MAX:
+                print("[카메라] 연결이 끊겼습니다. 케이블과 /dev/video 장치를 확인하세요.")
+                break
+            time.sleep(0.1)
+            continue
+        if fails:
+            print("[카메라] 다시 연결됨")
+            fails = 0
         cv2.imshow(WIN, process(S, yolo, class_ids, frame, now))
         if not handle_key(S, cv2.waitKey(1) & 0xFF, now):
             break

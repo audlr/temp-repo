@@ -12,10 +12,13 @@ kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (MORPH_K, MORPH_K))
 
 
 def load_yolo():
-    """YOLO 엔진 로드 + 사용할 클래스 이름을 COCO 클래스 ID로 변환 (04-D-6 클래스 지정 탐지)"""
+    """YOLO 엔진 로드 + 워밍업 + 사용할 클래스 이름을 COCO 클래스 ID로 변환 (04-D-6 클래스 지정 탐지)
+    yolo.names를 바로 읽으면 엔진이 한 번 더 로드되므로(GPU 메모리 2배), 워밍업 결과에서 클래스 이름을 얻음"""
     from ultralytics import YOLO
-    yolo = YOLO(YOLO_MODEL_PATH)
-    name_to_id = {name: class_id for class_id, name in yolo.names.items()}
+    yolo = YOLO(YOLO_MODEL_PATH, task="detect")
+    dummy = np.zeros((480, 640, 3), dtype=np.uint8)
+    result = yolo.predict(source=dummy, imgsz=YOLO_IMGSZ, verbose=False)[0]   # 첫 추론이 느린 것을 미리 처리
+    name_to_id = {name: class_id for class_id, name in result.names.items()}
     class_ids = [name_to_id[name] for name in YOLO_ITEMS + CARRIERS]
     return yolo, class_ids
 
