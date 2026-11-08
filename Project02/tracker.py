@@ -26,7 +26,7 @@ def match_detections(tracks, detections):
         for di, d in enumerate(detections):
             if t["class"] == d["class"]:
                 iou = calculate_iou(t["bbox"], d["bbox"])
-                if iou >= MATCH_IOU:
+                if iou >= (UNKNOWN_MATCH_IOU if t["class"] == UNKNOWN_CLASS else MATCH_IOU):
                     pairs.append((iou, ti, di))
 
     matched, used_t, used_d = [], set(), set()
@@ -70,7 +70,7 @@ def update_tracks(S, detections, now):
             t["hits"].append(0)
 
         if t["status"] == "candidate":
-            if sum(t["hits"]) >= STABLE_HITS:
+            if sum(t["hits"]) >= (UNKNOWN_HITS if t["class"] == UNKNOWN_CLASS else STABLE_HITS):
                 confirm(S, t)
             elif now - t["last_seen"] > MISSING_SEC:
                 S["tracks"].remove(t)                           # 잠깐 보였던 오탐지 제거

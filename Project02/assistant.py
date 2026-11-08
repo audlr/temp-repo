@@ -242,7 +242,7 @@ def main():
             if line:
                 handle_question(line, control)
 
-        except (subprocess.CalledProcessError, OSError) as error:
+        except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
             # 마이크·스피커·whisper 실행 오류로 프로그램 전체가 멈추지 않도록
             print("[오류]", error)
 

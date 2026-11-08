@@ -142,6 +142,8 @@ def draw(S, frame, now):
     for t in S["tracks"]:
         if t["status"] == "taken" or t["owner"] == "ignored":
             continue
+        if t["class"] == UNKNOWN_CLASS and t["status"] == "candidate":
+            continue                                    # 확인 중인 모르는 물건은 화면에 그리지 않음 (깜빡임 방지)
         color = track_color(S, t)
         x1, y1, x2, y2 = t["bbox"]
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, LINE)

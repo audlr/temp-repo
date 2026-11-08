@@ -5,9 +5,31 @@ import subprocess
 from config import *
 
 
+_mic = None
+
+
+def find_mic():
+    """MIC_DEVICE가 "auto"면 arecord -l 목록에서 USB 마이크를 찾아 "plughw:카드,장치"로 반환"""
+    global _mic
+    if MIC_DEVICE != "auto":
+        return MIC_DEVICE
+    if _mic:
+        return _mic
+
+    listing = subprocess.run(["arecord", "-l"], text=True, capture_output=True).stdout
+    devices = re.findall(r"^card (\d+): .*?, device (\d+): (.*)$", listing, re.M)
+    if not devices:
+        raise RuntimeError("녹음 장치를 찾을 수 없습니다. 마이크 연결과 'arecord -l' 결과를 확인하세요.")
+    usb = [d for d in devices if "USB" in d[2]] or devices
+    card, device, name = usb[0]
+    _mic = f"plughw:{card},{device}"
+    print(f"[마이크] {_mic} ({name.strip()})")
+    return _mic
+
+
 def speech_to_text():
     subprocess.run(
-        ["pasuspender", "--", "arecord", "-D", MIC_DEVICE, "-f", "S16_LE", "-r", "16000",
+        ["pasuspender", "--", "arecord", "-D", find_mic(), "-f", "S16_LE", "-r", "16000",
          "-c", "1", "-d", str(RECORD_SECONDS), AUDIO_FILE],
         check=True,
     )

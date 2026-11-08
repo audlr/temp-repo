@@ -78,7 +78,10 @@ def detect_unknown(S, gray, known_bboxes):
     if S["background"] is None:
         return []
 
-    diff = cv2.absdiff(gray, S["background"])
+    # 카메라 자동 노출로 화면 전체가 밝아지거나 어두워진 만큼은 빼고 비교
+    shift = np.median(gray.astype(np.int16) - S["background"].astype(np.int16))
+    adjusted = np.clip(gray.astype(np.int16) - shift, 0, 255).astype(np.uint8)
+    diff = cv2.absdiff(adjusted, S["background"])
     _, mask = cv2.threshold(diff, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
 
     for x1, y1, x2, y2 in known_bboxes:
@@ -91,11 +94,15 @@ def detect_unknown(S, gray, known_bboxes):
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITER)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    height, width = gray.shape
     detections = []
     for c in contours:
-        if cv2.contourArea(c) < UNKNOWN_MIN_AREA:
+        area = cv2.contourArea(c)
+        if area < UNKNOWN_MIN_AREA or area > UNKNOWN_MAX_AREA * gray.size:
             continue
         x, y, w, h = cv2.boundingRect(c)
+        if x <= UNKNOWN_EDGE or y <= UNKNOWN_EDGE or x + w >= width - UNKNOWN_EDGE or y + h >= height - UNKNOWN_EDGE:
+            continue                                    # 화면 밖에서 들어온 손·팔·사람
         detections.append({"class": UNKNOWN_CLASS, "conf": 0.5, "bbox": (x, y, x + w, y + h)})
     return detections
 

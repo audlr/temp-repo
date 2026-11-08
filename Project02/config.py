@@ -12,7 +12,7 @@ EVENT_JSON = "src/json/checkout_event.json"      # vision → assistant : 출발
 CONTROL_JSON = "src/json/checkout_control.json"  # assistant → vision : 예외 목록, 명령, 물건 이름
 
 # STT / TTS (06 섹션 설정 그대로)
-MIC_DEVICE = "plughw:2,0"
+MIC_DEVICE = "auto"     # "auto": arecord -l에서 USB 마이크를 찾아 사용. 직접 지정하려면 "plughw:카드번호,0"
 AUDIO_FILE = "src/audio/input.wav"
 WHISPER_PATH = "whisper.cpp/build-cpu/bin/whisper-cli"
 WHISPER_MODEL = "whisper.cpp/models/ggml-tiny.bin"   # Nano: base 대신 tiny (메모리·속도). 인식률이 아쉬우면 base
@@ -85,12 +85,16 @@ ITEM_NAMES_KO.update({key: marker["name"] for key, marker in MARKERS.items()})  
 
 # 체크인 때 찍은 사진을 배경으로 저장하고, 이후 구역 안에 생긴 변화 중
 # YOLO와 색 마커가 설명하지 못하는 영역을 "모르는 물건"으로 등록
-USE_UNKNOWN = True
+USE_UNKNOWN = USE_VISION_LLM   # Gemma 확인 없이 켜면 그림자·조명 변화까지 물건으로 잡혀 정신없음 (켜려면 True)
 UNKNOWN_CLASS = "unknown"
 DIFF_BLUR = 21          # 배경 차분 전 블러 커널 (작은 노이즈 무시)
-DIFF_THRESHOLD = 35     # 배경과 밝기 차이가 이 값 이상이면 변화로 판단
-UNKNOWN_MIN_AREA = 1500 # 모르는 물건으로 볼 최소 면적(px)
-UNKNOWN_MAX_RATIO = 0.4 # 화면의 40% 이상이 변하면 조명 변화나 사람으로 보고 무시
+DIFF_THRESHOLD = 45     # 배경과 밝기 차이가 이 값 이상이면 변화로 판단
+UNKNOWN_MIN_AREA = 3000 # 모르는 물건으로 볼 최소 면적(px)
+UNKNOWN_MAX_AREA = 0.25 # 덩어리 하나가 화면의 25%보다 크면 사람·팔로 보고 무시
+UNKNOWN_MAX_RATIO = 0.4 # 화면 전체의 40% 이상이 변하면 조명 변화나 사람으로 보고 무시
+UNKNOWN_EDGE = 10       # 화면 가장자리에 닿은 덩어리는 화면 밖에서 들어온 손·팔로 보고 무시
+UNKNOWN_HITS = 4        # 모르는 물건은 STABLE_WINDOW장 중 이만큼 연속으로 보여야 확정 (일반 물건보다 엄격)
+UNKNOWN_MATCH_IOU = 0.1 # 덩어리 모양이 사진마다 조금씩 달라도 같은 물체로 연결
 KNOWN_MARGIN = 15       # 이미 아는 물건 BBox를 이만큼 넓혀서 제외 (그림자 등)
 BG_ALPHA = 0.05         # 물체가 없는 영역의 배경 갱신 비율 (사진마다 5%, 약 40초에 걸쳐 조명 변화를 따라감)
 ROI_PAD = 10            # ROI를 자를 때 여유
