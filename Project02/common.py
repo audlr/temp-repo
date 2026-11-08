@@ -60,9 +60,14 @@ def apply_nms(detections, iou_threshold):
 
 # 체크아웃 판단 기준: vision·assistant가 같은 기준을 쓰도록 여기 한 곳에서 정의
 # item은 vision의 track이든 state.json의 물건 기록이든 같은 키(class, status, owner)를 가짐
+def is_excepted(item, exceptions):
+    """두고 가도 된다고 한 물건인지: 종류 전체("cell phone") 또는 번호로 지정한 하나("cell phone#2")"""
+    return item["class"] in exceptions or f"{item['class']}#{item.get('num')}" in exceptions
+
+
 def is_left(item, exceptions):
     """두고 가면 안 되는 물건: 체크인 후 생긴 내 물건 + 지금 있음 + 두고 가도 된다고 하지 않음"""
-    return item["status"] == "present" and item["owner"] == "mine" and item["class"] not in exceptions
+    return item["status"] == "present" and item["owner"] == "mine" and not is_excepted(item, exceptions)
 
 
 def is_missing_amenity(item):
@@ -72,6 +77,12 @@ def is_missing_amenity(item):
 
 def name_ko(item_class):
     return ITEM_NAMES_KO.get(item_class, item_class)
+
+
+def label_ko(key):
+    """예외 목록 키를 한국어로: "cell phone" → "휴대폰", "cell phone#2" → "휴대폰 2"""
+    item_class, _, num = key.partition("#")
+    return f"{name_ko(item_class)} {num}" if num else name_ko(item_class)
 
 
 def josa(word, pair):

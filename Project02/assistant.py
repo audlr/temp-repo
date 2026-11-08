@@ -5,7 +5,7 @@ import time
 import select
 
 from config import *
-from common import write_json, read_json, name_ko, josa, ago_ko, is_left, is_missing_amenity
+from common import write_json, read_json, name_ko, label_ko, josa, ago_ko, is_left, is_missing_amenity
 from intent import parse_intent
 from speech import speech_to_text, text_to_speech
 
@@ -104,13 +104,13 @@ def decide(intent, state, control, now):
     if name == "exception_add":
         if not items:
             return "어떤 물건을 두고 가실지 다시 말씀해 주세요."
-        names = ", ".join(name_ko(k) for k in items)
+        names = ", ".join(label_ko(k) for k in items)
         return f"알겠어요. {josa(names, ('은', '는'))} 확인할 때 빼 둘게요."
 
     if name == "exception_remove":
         if not items:
             return "어떤 물건을 다시 챙기실지 말씀해 주세요."
-        names = ", ".join(name_ko(k) for k in items)
+        names = ", ".join(label_ko(k) for k in items)
         return f"알겠어요. {names}도 다시 확인할게요."
 
     return "잘 못 알아들었어요. '체크아웃'이나 '내 폰 어디 있어?'처럼 말씀해 주세요."
@@ -128,7 +128,9 @@ def apply_intent(intent, control):
     if name == "exception_add":
         control["exceptions"] = sorted(set(control["exceptions"]) | set(intent["items"]))
     elif name == "exception_remove":
-        control["exceptions"] = [c for c in control["exceptions"] if c not in intent["items"]]
+        removed = set(intent["items"])                     # "휴대폰 다시 챙길게"는 번호 지정한 휴대폰까지 모두 해제
+        control["exceptions"] = [c for c in control["exceptions"]
+                                 if c not in removed and c.partition("#")[0] not in removed]
 
     command = {"checkin": "checkin", "checkout": "checkout"}.get(name, "snapshot")
     send_control(control, command)

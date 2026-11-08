@@ -115,7 +115,7 @@ def update_tracks(S, detections, now):
 
 def summarize(t):
     return {"id": t["id"], "class": t["class"], "name": t["name"],
-            "where": t["where"], "status": t["status"], "owner": t["owner"],
+            "num": t["num"], "where": t["where"], "status": t["status"], "owner": t["owner"],
             "first_seen": t["first_seen"], "last_seen": t["last_seen"],
             "taken_at": t["taken_at"], "missing_since": t.get("missing_since")}
 

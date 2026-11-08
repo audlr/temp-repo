@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 from config import *
-from common import write_json, read_json, apply_nms, name_ko, is_left, is_missing_amenity
+from common import write_json, read_json, apply_nms, name_ko, is_left, is_excepted, is_missing_amenity
 from detector import load_yolo, detect_yolo, detect_markers
 from tracker import update_tracks, update_locations, summarize
 
@@ -99,7 +99,7 @@ def put_text(img, text, org, color=WHITE, scale=TEXT):
 def track_color(S, t):
     if t["status"] == "candidate" or t["owner"] == "amenity":
         return GRAY
-    if t["class"] in S["exceptions"]:
+    if is_excepted(t, S["exceptions"]):
         return BLUE
     if t["id"] in S["alert_ids"] and S["alert_until"] > time.time():
         return RED

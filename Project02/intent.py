@@ -95,6 +95,27 @@ def parse_intent_rule(text):
     return {"intent": intent, "items": items}
 
 
+def attach_numbers(text, items):
+    """같은 종류가 여러 개일 때 번호로 하나만 지정한 경우: "휴대폰 2", "휴대폰 2번", "2번 휴대폰"
+    (Whisper는 "2번"처럼 숫자로 적음. "이번"은 "이번에"와 헷갈려 한글 숫자는 받지 않음)
+    → "cell phone#2" (번호가 없으면 종류 전체 그대로)"""
+    result = []
+    for key in items:
+        names = [name_ko(key), key] + (["폰"] if key == "cell phone" else [])
+        num = None
+        for name in names:
+            n = re.escape(name)
+            match = re.search(rf"{n}\s*(\d+)", text) or re.search(rf"(\d+)\s*번\s*{n}", text)
+            if match:
+                num = int(match.group(1))
+                break
+        result.append(f"{key}#{num}" if num else key)
+    return result
+
+
 def parse_intent(text):
     result = parse_intent_llm(text) if USE_LLM else None
-    return result or parse_intent_rule(text)
+    result = result or parse_intent_rule(text)
+    if result["intent"] in ("exception_add", "exception_remove"):
+        result["items"] = attach_numbers(text, result["items"])
+    return result
