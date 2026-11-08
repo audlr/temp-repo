@@ -24,9 +24,9 @@ def log_changes(S, changes, now):
              "returned": "다시 탐지됨", "taken": "사라짐(이전 버전)"}
     for kind, t in changes:
         owner = "비품" if t["owner"] == "amenity" else "내 물건"
-        print(f"[변화] {name_ko(t['class'])}({owner}) {words[kind]} - {t['where']}")
+        print(f"[변화] {t['name']}({owner}) {words[kind]} - {t['where']}")
         S["changes"].append({"time": now, "type": kind, "class": t["class"],
-                             "name": name_ko(t["class"]), "owner": t["owner"], "where": t["where"]})
+                             "name": t["name"], "owner": t["owner"], "where": t["where"]})
 
 
 def save_state(S, now):
@@ -42,7 +42,7 @@ def checkin(S):
         t["owner"] = "amenity"
     S["mode"] = "WATCH"
     S["changes"].clear()
-    names = [name_ko(t["class"]) for t in S["tracks"] if t["status"] == "present"]
+    names = [t["name"] for t in S["tracks"] if t["status"] == "present"]
     print(f"[체크인] 숙소 비품 {len(names)}개: {', '.join(names) or '없음'}")
 
 
@@ -63,9 +63,9 @@ def checkout(S, now, reason):
 
     S["alert_until"] = now + ALERT_SEC if left else 0
     S["alert_ids"] = [t["id"] for t in left]
-    print(f"[체크아웃] 남은 물건 {len(left)}개 {[name_ko(t['class']) for t in left]}, "
-          f"확인되지 않는 내 물건 {len(uncertain)}개 {[name_ko(t['class']) for t in uncertain]}, "
-          f"화면에서 사라진 비품 {len(missing)}개 {[name_ko(t['class']) for t in missing]}")
+    print(f"[체크아웃] 남은 물건 {len(left)}개 {[t['name'] for t in left]}, "
+          f"확인되지 않는 내 물건 {len(uncertain)}개 {[t['name'] for t in uncertain]}, "
+          f"화면에서 사라진 비품 {len(missing)}개 {[t['name'] for t in missing]}")
 
 
 def poll_control(S):
@@ -115,7 +115,8 @@ def draw(S, frame, now):
         x1, y1, x2, y2 = t["bbox"]
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, LINE)
         tag = " (room)" if t["owner"] == "amenity" else ""
-        put_text(frame, f"{t['class']}{tag}", (x1, max(y1 - 6, 14)), color)
+        num = f" {t['num']}" if t["name"] != name_ko(t["class"]) else ""   # 같은 종류가 여러 개면 번호 표시
+        put_text(frame, f"{t['class']}{num}{tag}", (x1, max(y1 - 6, 14)), color)
 
     # 상단 상태
     mine = [t for t in S["tracks"] if t["owner"] == "mine"]
@@ -141,7 +142,7 @@ def draw(S, frame, now):
 
 def new_state():
     return {"mode": "READY", "tracks": [], "next_id": 0, "exceptions": [],
-            "control_seq": 0, "event_seq": 0, "alert_until": 0, "alert_ids": [],
+            "control_seq": 0, "event_seq": 0, "alert_until": 0, "alert_ids": [], "class_nums": {},
             "pending": None, "last_snap": 0, "last_poll": 0, "changes": deque(maxlen=20)}
 
 

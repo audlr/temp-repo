@@ -16,7 +16,8 @@ def new_track(S, det, now):
     return {"id": S["next_id"], "class": det["class"], "bbox": det["bbox"],
             "hits": deque([1], maxlen=STABLE_WINDOW), "status": "candidate",
             "owner": "mine" if S["mode"] == "WATCH" else "unknown",
-            "where": "", "anchor": center(det["bbox"]), "anchor_bbox": det["bbox"],
+            "where": "", "num": None, "name": name_ko(det["class"]),
+            "anchor": center(det["bbox"]), "anchor_bbox": det["bbox"],
             "first_seen": now, "last_seen": now, "taken_at": None, "missing_since": None}
 
 
@@ -54,6 +55,8 @@ def confirm(S, t):
         S["tracks"].remove(t)
         return old, "moved"
     t["status"] = "present"
+    S["class_nums"][t["class"]] = S["class_nums"].get(t["class"], 0) + 1
+    t["num"] = S["class_nums"][t["class"]]           # 같은 종류 안에서 몇 번째로 확정된 물건인지
     return t, "appeared"
 
 
@@ -111,7 +114,7 @@ def update_tracks(S, detections, now):
 
 
 def summarize(t):
-    return {"id": t["id"], "class": t["class"], "name": name_ko(t["class"]),
+    return {"id": t["id"], "class": t["class"], "name": t["name"],
             "where": t["where"], "status": t["status"], "owner": t["owner"],
             "first_seen": t["first_seen"], "last_seen": t["last_seen"],
             "taken_at": t["taken_at"], "missing_since": t.get("missing_since")}
@@ -178,11 +181,20 @@ def describe_location(t, landmarks, shape):
     if not candidates:
         return screen_position(t["bbox"], shape)
     _, ref, side = min(candidates, key=lambda c: c[0])
-    return f"{name_ko(ref['class'])} {side}"
+    return f"{ref['name']} {side}"
+
+
+def update_names(S):
+    """같은 종류가 2개 이상이면 이름 뒤에 번호를 붙임 ("휴대폰 1", "휴대폰 2"), 하나뿐이면 "휴대폰"""
+    confirmed = [t for t in S["tracks"] if t["status"] != "candidate"]
+    for t in confirmed:
+        same = sum(o["class"] == t["class"] for o in confirmed)
+        t["name"] = f"{name_ko(t['class'])} {t['num']}" if same > 1 else name_ko(t["class"])
 
 
 def update_locations(S, shape):
     """지금 있는 물건마다 위치 설명 갱신 (기준 물건에는 숙소 비품도 포함). 사라진 물건은 마지막 위치를 유지"""
+    update_names(S)
     present = [t for t in S["tracks"] if t["status"] == "present"]
     for t in present:
         t["where"] = describe_location(t, present, shape)

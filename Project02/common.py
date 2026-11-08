@@ -77,6 +77,8 @@ def name_ko(item_class):
 def josa(word, pair):
     """받침 유무에 따라 조사 선택. pair = ("이", "가"), ("은", "는"), ("을", "를"), ("으로", "로")"""
     last = word[-1]
+    if last.isdigit():                                   # 숫자는 읽는 소리로 받침 판단 (1 일, 2 이, 3 삼 ...)
+        last = "영일이삼사오육칠팔구"[int(last)]
     if "가" <= last <= "힣":
         final = (ord(last) - ord("가")) % 28
         if pair == ("으로", "로") and final == 8:        # ㄹ 받침은 "로" (예: 물병로 X, 칼로 O)

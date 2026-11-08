@@ -31,10 +31,20 @@ def checkout_sentence(left, missing, uncertain=None):
         sentences.append(f"확인되지 않는 물건은 {josa(names, ('이에요', '예요'))}.")
     if missing:
         names = ", ".join(i["name"] for i in missing)
-        sentences.append(f"그리고 숙소 비품인 {josa(names, ('이', '가'))} 화면에서 확인되지 않아요. 원래 위치에 있는지 확인해 주세요.")
+        sentences.append(f"숙소 비품인 {josa(names, ('이', '가'))} 화면에서 확인되지 않아요. 원래 위치에 있는지 확인해 주세요.")
     if not sentences:
         return "빠뜨린 물건이 없어요. 조심히 가세요!"
     return " ".join(sentences)
+
+
+def locate_sentence(item, now):
+    """물건 하나의 위치 안내"""
+    if item["status"] == "present":
+        return f"{josa(item['name'], ('은', '는'))} 지금 {item['where']}에 있어요."
+    if item["status"] == "missing":
+        return (f"{josa(item['name'], ('은', '는'))} 마지막으로 {item['where']}에서 확인됐지만 "
+                f"지금은 화면에 보이지 않아요. 챙기셨는지 확인해 주세요.")
+    return f"{josa(item['name'], ('은', '는'))} {ago_ko(item['taken_at'], now)} {item['where']}에서 챙기신 뒤로 안 보여요."
 
 
 def decide(intent, state, control, now):
@@ -68,14 +78,8 @@ def decide(intent, state, control, now):
             if not found:
                 answers.append(f"{josa(name_ko(key), ('은', '는'))} 아직 본 적이 없어요.")
                 continue
-            item = max(found, key=lambda i: i["last_seen"])
-            if item["status"] == "present":
-                answers.append(f"{josa(item['name'], ('은', '는'))} 지금 {item['where']}에 있어요.")
-            elif item["status"] == "missing":
-                answers.append(f"{josa(item['name'], ('은', '는'))} 마지막으로 {item['where']}에서 확인됐지만 지금은 화면에 보이지 않아요. 챙기셨는지 확인해 주세요.")
-            else:
-                answers.append(f"{josa(item['name'], ('은', '는'))} {ago_ko(item['taken_at'], now)} "
-                               f"{item['where']}에서 챙기신 뒤로 안 보여요.")
+            for item in sorted(found, key=lambda i: i["name"]):   # 같은 종류가 여러 개면 모두 답함
+                answers.append(locate_sentence(item, now))
         return " ".join(answers)
 
     if name == "list":
