@@ -706,10 +706,3 @@ time_fig.update_layout(
 )
 st.plotly_chart(time_fig, use_container_width=True)
 
-st.caption(
-    "Note: MISER uses pilot samples to estimate subregion variance and allocate "
-    "the remaining sample budget recursively. Pilot evaluations are included in "
-    "the evaluation count but not directly in the final integral estimate. "
-    "MISER is not guaranteed to outperform plain Monte Carlo on every function "
-    "or every sample size; compare repeated runs as well as a single seeded run."
-)
