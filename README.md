@@ -1,4 +1,4 @@
-# Monte Carlo vs MISER Streamlit App
+# Monte Carlo vs MISER
 
 ## Run locally
 
