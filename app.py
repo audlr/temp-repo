@@ -393,30 +393,27 @@ with right:
 
 st.markdown(f"**True integral:** `{actual:.10f}`")
 
-# Progressive 3-D animation
+# Client-side Plotly animation (avoids repeatedly rerendering the Streamlit page)
 st.subheader("Live Sampling Animation")
 st.caption(
-    "Samples are revealed progressively on the 3-D function surface. "
-    "The counters above the plots update as the animation advances."
+    "Press Play to reveal samples progressively. The animation runs inside the "
+    "3-D chart, so Streamlit does not redraw the entire page at every frame."
 )
 
-anim_col1, anim_col2 = st.columns([1, 3])
-with anim_col1:
-    animation_seconds = st.select_slider(
-        "Animation duration",
-        options=[3, 5, 8, 12],
-        value=5,
-        format_func=lambda x: f"{x} seconds",
-    )
-with anim_col2:
-    st.caption("The computation is completed first; this animation replays the generated samples in sequence.")
+animation_seconds = st.select_slider(
+    "Animation duration",
+    options=[3, 5, 8, 12],
+    value=8,
+    format_func=lambda x: f"{x} seconds",
+)
 
 grid_axis = np.linspace(0, 1, 75)
 xx, yy = np.meshgrid(grid_axis, grid_axis)
 grid_points = np.column_stack([xx.ravel(), yy.ravel()])
 zz = evaluate_function(grid_points, test_name).reshape(xx.shape)
 
-animation_limit = min(1800, len(plain["points"]), len(miser["points"]))
+# Use a bounded number of visible points to keep the browser animation smooth.
+animation_limit = min(1200, len(plain["points"]), len(miser["points"]))
 plain_indices = np.linspace(0, len(plain["points"]) - 1, animation_limit, dtype=int)
 miser_indices = np.linspace(0, len(miser["points"]) - 1, animation_limit, dtype=int)
 plain_anim_points = plain["points"][plain_indices]
@@ -424,141 +421,224 @@ plain_anim_values = plain["values"][plain_indices]
 miser_anim_points = miser["points"][miser_indices]
 miser_anim_values = miser["values"][miser_indices]
 
-status = st.empty()
-progress = st.progress(0, text="Preparing animation...")
-chart_slot = st.empty()
+fig_anim = make_subplots(
+    rows=1,
+    cols=2,
+    specs=[[{"type": "scene"}, {"type": "scene"}]],
+    subplot_titles=("🔵 Plain Monte Carlo", "🟠 MISER Algorithm"),
+    horizontal_spacing=0.02,
+)
 
-def make_animated_figure(plain_count, miser_count):
-    fig_anim = make_subplots(
-        rows=1, cols=2,
-        specs=[[{"type": "scene"}, {"type": "scene"}]],
-        subplot_titles=("Plain Monte Carlo", "MISER Algorithm"),
-        horizontal_spacing=0.02,
+# Static function surfaces are added only once.
+for col in (1, 2):
+    fig_anim.add_trace(
+        go.Surface(
+            x=xx,
+            y=yy,
+            z=zz,
+            colorscale="Viridis",
+            opacity=0.76,
+            showscale=(col == 2),
+            colorbar=dict(title="f(x, y)", len=0.72, x=1.02) if col == 2 else None,
+            name="Function surface",
+            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+        ),
+        row=1,
+        col=col,
     )
 
-    for col in (1, 2):
-        fig_anim.add_trace(
-            go.Surface(
-                x=xx, y=yy, z=zz,
-                colorscale="Viridis",
-                opacity=0.78,
-                showscale=(col == 2),
-                colorbar=dict(title="f(x, y)", len=0.72, x=1.02) if col == 2 else None,
-                name="Function surface",
-                hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-            ),
-            row=1, col=col,
-        )
-
-    def add_visible_points(points, values, count, col, color, label):
-        pts, vals = points[:count], values[:count]
-        if len(pts) == 0:
-            return
-        inside = vals > 0
-        fig_anim.add_trace(
-            go.Scatter3d(
-                x=pts[~inside, 0], y=pts[~inside, 1], z=vals[~inside],
-                mode="markers", name=f"{label} outside",
-                marker=dict(color="#A0A7B4", size=2.6, opacity=0.55),
-                showlegend=(col == 1),
-                hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-            ), row=1, col=col,
-        )
-        fig_anim.add_trace(
-            go.Scatter3d(
-                x=pts[inside, 0], y=pts[inside, 1], z=vals[inside],
-                mode="markers", name=f"{label} inside",
-                marker=dict(color=color, size=3.5, opacity=0.95),
-                showlegend=(col == 1),
-                hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-            ), row=1, col=col,
-        )
-
-    add_visible_points(plain_anim_points, plain_anim_values, plain_count, 1, "#3977C3", "Plain MC")
-    add_visible_points(miser_anim_points, miser_anim_values, miser_count, 2, "#F28E2B", "MISER")
-
-    z_top = max(float(np.max(zz)), 1.0 if test_name == "Circle" else 0.05)
-    for split in miser["splits"]:
-        box = split["bounds"]
-        dim, coordinate = split["dimension"], split["coordinate"]
-        if dim == 0:
-            x_line, y_line = [coordinate, coordinate], [box[1][0], box[1][1]]
-        else:
-            x_line, y_line = [box[0][0], box[0][1]], [coordinate, coordinate]
-        fig_anim.add_trace(
-            go.Scatter3d(
-                x=x_line, y=y_line, z=[z_top * 1.02, z_top * 1.02],
-                mode="lines",
-                line=dict(color="#D97706", width=4, dash="dash"),
-                name="MISER split", showlegend=False, hoverinfo="skip",
-            ), row=1, col=2,
-        )
-
-    scene_style = dict(
-        xaxis=dict(title="X", range=[0, 1]),
-        yaxis=dict(title="Y", range=[0, 1]),
-        zaxis=dict(title="f(x, y)", rangemode="tozero"),
-        aspectmode="cube",
-        camera=dict(eye=dict(x=1.55, y=1.55, z=1.15)),
+def split_sample_groups(points, values):
+    """Return outside and inside point arrays (for Circle); Gaussian points are all active."""
+    if test_name == "Circle":
+        inside_mask = values > 0
+    else:
+        inside_mask = np.ones(len(values), dtype=bool)
+    return (
+        (points[~inside_mask], values[~inside_mask]),
+        (points[inside_mask], values[inside_mask]),
     )
-    fig_anim.update_layout(
-        height=650, margin=dict(l=0, r=30, t=65, b=0),
-        legend=dict(orientation="h", y=-0.04),
-        scene=scene_style, scene2=scene_style,
+
+# Four initially empty scatter traces are updated by Plotly frames.
+for col, color, label in [
+    (1, "#3977C3", "Plain MC"),
+    (2, "#F28E2B", "MISER"),
+]:
+    outside_name = f"{label} outside"
+    inside_name = f"{label} samples" if test_name == "Gaussian" else f"{label} inside"
+    fig_anim.add_trace(
+        go.Scatter3d(
+            x=[], y=[], z=[], mode="markers",
+            name=outside_name,
+            marker=dict(color="#A0A7B4", size=2.5, opacity=0.48),
+            showlegend=(col == 1 and test_name == "Circle"),
+            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+        ),
+        row=1, col=col,
     )
-    return fig_anim
+    fig_anim.add_trace(
+        go.Scatter3d(
+            x=[], y=[], z=[], mode="markers",
+            name=inside_name,
+            marker=dict(color=color, size=3.2, opacity=0.9),
+            showlegend=(col == 1),
+            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+        ),
+        row=1, col=col,
+    )
 
-frame_count = 20
-frame_delay = animation_seconds / frame_count
-playback_start = time.perf_counter()
+# MISER split boundaries remain static throughout playback.
+z_top = max(float(np.max(zz)), 1.0 if test_name == "Circle" else 0.05)
+for split in miser["splits"]:
+    box = split["bounds"]
+    dim, coordinate = split["dimension"], split["coordinate"]
+    if dim == 0:
+        x_line, y_line = [coordinate, coordinate], [box[1][0], box[1][1]]
+    else:
+        x_line, y_line = [box[0][0], box[0][1]], [coordinate, coordinate]
+    fig_anim.add_trace(
+        go.Scatter3d(
+            x=x_line,
+            y=y_line,
+            z=[z_top * 1.02, z_top * 1.02],
+            mode="lines",
+            line=dict(color="#D97706", width=3, dash="dash"),
+            name="MISER split",
+            showlegend=False,
+            hoverinfo="skip",
+        ),
+        row=1, col=2,
+    )
 
-for frame in range(1, frame_count + 1):
-    fraction = frame / frame_count
-    visible_plain = max(1, int(animation_limit * fraction))
-    visible_miser = max(1, int(animation_limit * fraction))
-    p_vals = plain_anim_values[:visible_plain]
-    m_vals = miser_anim_values[:visible_miser]
-    p_inside = int(np.count_nonzero(p_vals > 0))
-    m_inside = int(np.count_nonzero(m_vals > 0))
-    elapsed = min(time.perf_counter() - playback_start, animation_seconds)
+# Build frames once; Plotly animates only the four point traces in the browser.
+frame_count = 30
+frames = []
+for frame_no in range(frame_count + 1):
+    fraction = frame_no / frame_count
+    count = max(0, int(animation_limit * fraction))
 
-    with status.container():
-        top1, top2 = st.columns(2)
-        with top1:
-            st.markdown("**🔵 Plain Monte Carlo**")
-            a, b, c, d = st.columns(4)
-            a.metric("Samples", f"{visible_plain:,} / {animation_limit:,}")
-            b.metric("Progress", f"{fraction * 100:.0f}%")
-            c.metric("Inside", f"{p_inside:,}")
-            d.metric("Outside", f"{visible_plain - p_inside:,}")
-        with top2:
-            st.markdown("**🟠 MISER Algorithm**")
-            a, b, c, d = st.columns(4)
-            a.metric("Samples", f"{visible_miser:,} / {animation_limit:,}")
-            b.metric("Progress", f"{fraction * 100:.0f}%")
-            c.metric("Inside", f"{m_inside:,}")
-            d.metric("Outside", f"{visible_miser - m_inside:,}")
-        st.caption(
-            f"Animation elapsed: {elapsed:.1f}s / {animation_seconds:.1f}s"
-            f"  |  Plain running estimate: {float(np.mean(p_vals)):.6f}"
-            f"  |  MISER running estimate: {float(np.mean(m_vals)):.6f}"
-            f"  |  True integral: {actual:.6f}"
+    (p_out_pts, p_out_vals), (p_in_pts, p_in_vals) = split_sample_groups(
+        plain_anim_points[:count], plain_anim_values[:count]
+    )
+    (m_out_pts, m_out_vals), (m_in_pts, m_in_vals) = split_sample_groups(
+        miser_anim_points[:count], miser_anim_values[:count]
+    )
+
+    # Display playback elapsed time as a deterministic timeline label.
+    elapsed_label = animation_seconds * fraction
+    status_title = (
+        f"Sampling progress: {fraction * 100:.0f}%"
+        f"  |  Elapsed: {elapsed_label:.1f}s / {animation_seconds:.1f}s"
+        f"  |  Plain: {count:,}/{animation_limit:,}"
+        f"  |  MISER: {count:,}/{animation_limit:,}"
+    )
+
+    frames.append(
+        go.Frame(
+            name=str(frame_no),
+            data=[
+                go.Scatter3d(x=p_out_pts[:, 0], y=p_out_pts[:, 1], z=p_out_vals),
+                go.Scatter3d(x=p_in_pts[:, 0], y=p_in_pts[:, 1], z=p_in_vals),
+                go.Scatter3d(x=m_out_pts[:, 0], y=m_out_pts[:, 1], z=m_out_vals),
+                go.Scatter3d(x=m_in_pts[:, 0], y=m_in_pts[:, 1], z=m_in_vals),
+            ],
+            traces=[2, 3, 4, 5],
+            layout=go.Layout(title_text=status_title),
         )
-
-    progress.progress(int(fraction * 100), text=f"Revealing samples... {fraction * 100:.0f}%")
-    chart_slot.plotly_chart(
-        make_animated_figure(visible_plain, visible_miser),
-        use_container_width=True,
-        key=f"animated_3d_frame_{frame}",
     )
-    if frame < frame_count:
-        time.sleep(frame_delay)
 
-progress.empty()
-st.success(
-    f"Animation complete. Displayed {animation_limit:,} samples per algorithm. "
-    f"Actual computation time — Plain: {result['plain_time']:.4f}s, "
-    f"MISER: {result['miser_time']:.4f}s."
+fig_anim.frames = frames
+
+scene_style = dict(
+    xaxis=dict(title="X", range=[0, 1]),
+    yaxis=dict(title="Y", range=[0, 1]),
+    zaxis=dict(title="f(x, y)", rangemode="tozero"),
+    aspectmode="cube",
+    camera=dict(eye=dict(x=1.55, y=1.55, z=1.15)),
+)
+fig_anim.update_layout(
+    title=dict(
+        text=f"Sampling progress: 0%  |  Elapsed: 0.0s / {animation_seconds:.1f}s",
+        x=0.5,
+        xanchor="center",
+    ),
+    height=700,
+    margin=dict(l=0, r=30, t=100, b=70),
+    legend=dict(orientation="h", y=-0.08),
+    scene=scene_style,
+    scene2=scene_style,
+    updatemenus=[
+        dict(
+            type="buttons",
+            showactive=False,
+            x=0.02,
+            y=1.12,
+            xanchor="left",
+            yanchor="top",
+            buttons=[
+                dict(
+                    label="▶ Play",
+                    method="animate",
+                    args=[
+                        None,
+                        {
+                            "frame": {"duration": int(animation_seconds * 1000 / frame_count), "redraw": False},
+                            "transition": {"duration": 0},
+                            "fromcurrent": True,
+                            "mode": "immediate",
+                        },
+                    ],
+                ),
+                dict(
+                    label="❚❚ Pause",
+                    method="animate",
+                    args=[
+                        [None],
+                        {
+                            "frame": {"duration": 0, "redraw": False},
+                            "transition": {"duration": 0},
+                            "mode": "immediate",
+                        },
+                    ],
+                ),
+            ],
+        )
+    ],
+    sliders=[
+        dict(
+            active=0,
+            x=0.16,
+            y=-0.02,
+            len=0.78,
+            currentvalue={"prefix": "Frame: "},
+            steps=[
+                dict(
+                    label=str(i),
+                    method="animate",
+                    args=[
+                        [str(i)],
+                        {
+                            "frame": {"duration": 0, "redraw": False},
+                            "transition": {"duration": 0},
+                            "mode": "immediate",
+                        },
+                    ],
+                )
+                for i in range(frame_count + 1)
+            ],
+        )
+    ],
+)
+
+st.plotly_chart(
+    fig_anim,
+    use_container_width=True,
+    config={"displayModeBar": True, "scrollZoom": True},
+)
+
+st.caption(
+    f"Each algorithm displays up to {animation_limit:,} representative samples. "
+    "Use Play/Pause or the frame slider to control the animation. "
+    "The chart animation is client-side; actual algorithm execution times are shown above."
 )
 
 # Comparison table and chart
@@ -603,3 +683,11 @@ time_fig.update_layout(
     showlegend=False,
 )
 st.plotly_chart(time_fig, use_container_width=True)
+
+st.caption(
+    "Note: MISER uses pilot samples to estimate subregion variance and allocate "
+    "the remaining sample budget recursively. Pilot evaluations are included in "
+    "the evaluation count but not directly in the final integral estimate. "
+    "MISER is not guaranteed to outperform plain Monte Carlo on every function "
+    "or every sample size; compare repeated runs as well as a single seeded run."
+)
