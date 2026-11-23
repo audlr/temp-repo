@@ -393,133 +393,173 @@ with right:
 
 st.markdown(f"**True integral:** `{actual:.10f}`")
 
-# 3-D surface and sampled points
-st.subheader("3D Function Surface & Sample Distribution")
+# Progressive 3-D animation
+st.subheader("Live Sampling Animation")
 st.caption(
-    "The surface shows f(x, y), while the dots show the sampled coordinates "
-    "placed at their corresponding function heights."
+    "Samples are revealed progressively on the 3-D function surface. "
+    "The counters above the plots update as the animation advances."
 )
 
-fig3d = make_subplots(
-    rows=1,
-    cols=2,
-    specs=[[{"type": "scene"}, {"type": "scene"}]],
-    subplot_titles=("Plain Monte Carlo", "MISER Algorithm"),
-    horizontal_spacing=0.02,
-)
+anim_col1, anim_col2 = st.columns([1, 3])
+with anim_col1:
+    animation_seconds = st.select_slider(
+        "Animation duration",
+        options=[3, 5, 8, 12],
+        value=5,
+        format_func=lambda x: f"{x} seconds",
+    )
+with anim_col2:
+    st.caption("The computation is completed first; this animation replays the generated samples in sequence.")
 
-grid_axis = np.linspace(0, 1, 100)
+grid_axis = np.linspace(0, 1, 75)
 xx, yy = np.meshgrid(grid_axis, grid_axis)
 grid_points = np.column_stack([xx.ravel(), yy.ravel()])
 zz = evaluate_function(grid_points, test_name).reshape(xx.shape)
 
-# Surface of the selected integrand.
-for col in (1, 2):
-    fig3d.add_trace(
-        go.Surface(
-            x=xx,
-            y=yy,
-            z=zz,
-            colorscale="Viridis",
-            opacity=0.72,
-            showscale=(col == 2),
-            colorbar=dict(title="f(x, y)", len=0.72, x=1.02) if col == 2 else None,
-            name="Function surface",
-            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-        ),
-        row=1,
-        col=col,
+animation_limit = min(1800, len(plain["points"]), len(miser["points"]))
+plain_indices = np.linspace(0, len(plain["points"]) - 1, animation_limit, dtype=int)
+miser_indices = np.linspace(0, len(miser["points"]) - 1, animation_limit, dtype=int)
+plain_anim_points = plain["points"][plain_indices]
+plain_anim_values = plain["values"][plain_indices]
+miser_anim_points = miser["points"][miser_indices]
+miser_anim_values = miser["values"][miser_indices]
+
+status = st.empty()
+progress = st.progress(0, text="Preparing animation...")
+chart_slot = st.empty()
+
+def make_animated_figure(plain_count, miser_count):
+    fig_anim = make_subplots(
+        rows=1, cols=2,
+        specs=[[{"type": "scene"}, {"type": "scene"}]],
+        subplot_titles=("Plain Monte Carlo", "MISER Algorithm"),
+        horizontal_spacing=0.02,
     )
 
-def add_3d_samples(fig, sample_result, col, inside_color, group_name):
-    pts = sample_result["points"]
-    vals = sample_result["values"]
-    if len(pts) == 0:
-        return
+    for col in (1, 2):
+        fig_anim.add_trace(
+            go.Surface(
+                x=xx, y=yy, z=zz,
+                colorscale="Viridis",
+                opacity=0.78,
+                showscale=(col == 2),
+                colorbar=dict(title="f(x, y)", len=0.72, x=1.02) if col == 2 else None,
+                name="Function surface",
+                hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+            ),
+            row=1, col=col,
+        )
 
-    # Keep the browser responsive while retaining a representative sample.
-    display_count = min(5000, len(pts))
-    indices = np.linspace(0, len(pts) - 1, display_count, dtype=int)
-    sampled_points = pts[indices]
-    sampled_values = vals[indices]
-    inside_mask = sampled_values > 0
+    def add_visible_points(points, values, count, col, color, label):
+        pts, vals = points[:count], values[:count]
+        if len(pts) == 0:
+            return
+        inside = vals > 0
+        fig_anim.add_trace(
+            go.Scatter3d(
+                x=pts[~inside, 0], y=pts[~inside, 1], z=vals[~inside],
+                mode="markers", name=f"{label} outside",
+                marker=dict(color="#A0A7B4", size=2.6, opacity=0.55),
+                showlegend=(col == 1),
+                hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+            ), row=1, col=col,
+        )
+        fig_anim.add_trace(
+            go.Scatter3d(
+                x=pts[inside, 0], y=pts[inside, 1], z=vals[inside],
+                mode="markers", name=f"{label} inside",
+                marker=dict(color=color, size=3.5, opacity=0.95),
+                showlegend=(col == 1),
+                hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+            ), row=1, col=col,
+        )
 
-    fig.add_trace(
-        go.Scatter3d(
-            x=sampled_points[~inside_mask, 0],
-            y=sampled_points[~inside_mask, 1],
-            z=sampled_values[~inside_mask],
-            mode="markers",
-            name=f"{group_name} outside",
-            marker=dict(color="#A0A7B4", size=2.5, opacity=0.55),
-            showlegend=(col == 1),
-            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-        ),
-        row=1,
-        col=col,
+    add_visible_points(plain_anim_points, plain_anim_values, plain_count, 1, "#3977C3", "Plain MC")
+    add_visible_points(miser_anim_points, miser_anim_values, miser_count, 2, "#F28E2B", "MISER")
+
+    z_top = max(float(np.max(zz)), 1.0 if test_name == "Circle" else 0.05)
+    for split in miser["splits"]:
+        box = split["bounds"]
+        dim, coordinate = split["dimension"], split["coordinate"]
+        if dim == 0:
+            x_line, y_line = [coordinate, coordinate], [box[1][0], box[1][1]]
+        else:
+            x_line, y_line = [box[0][0], box[0][1]], [coordinate, coordinate]
+        fig_anim.add_trace(
+            go.Scatter3d(
+                x=x_line, y=y_line, z=[z_top * 1.02, z_top * 1.02],
+                mode="lines",
+                line=dict(color="#D97706", width=4, dash="dash"),
+                name="MISER split", showlegend=False, hoverinfo="skip",
+            ), row=1, col=2,
+        )
+
+    scene_style = dict(
+        xaxis=dict(title="X", range=[0, 1]),
+        yaxis=dict(title="Y", range=[0, 1]),
+        zaxis=dict(title="f(x, y)", rangemode="tozero"),
+        aspectmode="cube",
+        camera=dict(eye=dict(x=1.55, y=1.55, z=1.15)),
     )
-    fig.add_trace(
-        go.Scatter3d(
-            x=sampled_points[inside_mask, 0],
-            y=sampled_points[inside_mask, 1],
-            z=sampled_values[inside_mask],
-            mode="markers",
-            name=f"{group_name} inside",
-            marker=dict(color=inside_color, size=3.5, opacity=0.9),
-            showlegend=(col == 1),
-            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-        ),
-        row=1,
-        col=col,
+    fig_anim.update_layout(
+        height=650, margin=dict(l=0, r=30, t=65, b=0),
+        legend=dict(orientation="h", y=-0.04),
+        scene=scene_style, scene2=scene_style,
     )
+    return fig_anim
 
-add_3d_samples(fig3d, plain, 1, "#3977C3", "Plain MC")
-add_3d_samples(fig3d, miser, 2, "#F28E2B", "MISER")
+frame_count = 20
+frame_delay = animation_seconds / frame_count
+playback_start = time.perf_counter()
 
-# MISER split boundaries are drawn as vertical planes/lines in its 3-D scene.
-z_top = max(float(np.max(zz)), 1.0 if test_name == "Circle" else 0.05)
-for split in miser["splits"]:
-    split_box = split["bounds"]
-    dim = split["dimension"]
-    coordinate = split["coordinate"]
-    if dim == 0:
-        x_line = [coordinate, coordinate]
-        y_line = [split_box[1][0], split_box[1][1]]
-    else:
-        x_line = [split_box[0][0], split_box[0][1]]
-        y_line = [coordinate, coordinate]
+for frame in range(1, frame_count + 1):
+    fraction = frame / frame_count
+    visible_plain = max(1, int(animation_limit * fraction))
+    visible_miser = max(1, int(animation_limit * fraction))
+    p_vals = plain_anim_values[:visible_plain]
+    m_vals = miser_anim_values[:visible_miser]
+    p_inside = int(np.count_nonzero(p_vals > 0))
+    m_inside = int(np.count_nonzero(m_vals > 0))
+    elapsed = min(time.perf_counter() - playback_start, animation_seconds)
 
-    # A vertical indicator of the split, shown at the upper edge of the plot.
-    fig3d.add_trace(
-        go.Scatter3d(
-            x=x_line,
-            y=y_line,
-            z=[z_top * 1.03, z_top * 1.03],
-            mode="lines",
-            line=dict(color="#D97706", width=5, dash="dash"),
-            name="MISER split",
-            showlegend=False,
-            hoverinfo="skip",
-        ),
-        row=1,
-        col=2,
+    with status.container():
+        top1, top2 = st.columns(2)
+        with top1:
+            st.markdown("**🔵 Plain Monte Carlo**")
+            a, b, c, d = st.columns(4)
+            a.metric("Samples", f"{visible_plain:,} / {animation_limit:,}")
+            b.metric("Progress", f"{fraction * 100:.0f}%")
+            c.metric("Inside", f"{p_inside:,}")
+            d.metric("Outside", f"{visible_plain - p_inside:,}")
+        with top2:
+            st.markdown("**🟠 MISER Algorithm**")
+            a, b, c, d = st.columns(4)
+            a.metric("Samples", f"{visible_miser:,} / {animation_limit:,}")
+            b.metric("Progress", f"{fraction * 100:.0f}%")
+            c.metric("Inside", f"{m_inside:,}")
+            d.metric("Outside", f"{visible_miser - m_inside:,}")
+        st.caption(
+            f"Animation elapsed: {elapsed:.1f}s / {animation_seconds:.1f}s"
+            f"  |  Plain running estimate: {float(np.mean(p_vals)):.6f}"
+            f"  |  MISER running estimate: {float(np.mean(m_vals)):.6f}"
+            f"  |  True integral: {actual:.6f}"
+        )
+
+    progress.progress(int(fraction * 100), text=f"Revealing samples... {fraction * 100:.0f}%")
+    chart_slot.plotly_chart(
+        make_animated_figure(visible_plain, visible_miser),
+        use_container_width=True,
+        key=f"animated_3d_frame_{frame}",
     )
+    if frame < frame_count:
+        time.sleep(frame_delay)
 
-scene_common = dict(
-    xaxis=dict(title="X", range=[0, 1]),
-    yaxis=dict(title="Y", range=[0, 1]),
-    zaxis=dict(title="f(x, y)", rangemode="tozero"),
-    aspectmode="cube",
-    camera=dict(eye=dict(x=1.55, y=1.55, z=1.15)),
+progress.empty()
+st.success(
+    f"Animation complete. Displayed {animation_limit:,} samples per algorithm. "
+    f"Actual computation time — Plain: {result['plain_time']:.4f}s, "
+    f"MISER: {result['miser_time']:.4f}s."
 )
-fig3d.update_layout(
-    height=680,
-    margin=dict(l=0, r=30, t=65, b=0),
-    legend=dict(orientation="h", y=-0.05),
-    scene=scene_common,
-    scene2=scene_common,
-)
-st.plotly_chart(fig3d, use_container_width=True)
 
 # Comparison table and chart
 st.subheader("Performance Comparison")
