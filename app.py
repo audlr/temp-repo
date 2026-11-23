@@ -548,6 +548,28 @@ for frame_no in range(frame_count + 1):
 
 fig_anim.frames = frames
 
+# Show a small initial batch immediately so the chart is never blank
+# while the user is deciding whether to press Play.
+initial_count = max(1, animation_limit // frame_count)
+(p0_out, p0_out_v), (p0_in, p0_in_v) = split_sample_groups(
+    plain_anim_points[:initial_count], plain_anim_values[:initial_count]
+)
+(m0_out, m0_out_v), (m0_in, m0_in_v) = split_sample_groups(
+    miser_anim_points[:initial_count], miser_anim_values[:initial_count]
+)
+fig_anim.data[2].x, fig_anim.data[2].y, fig_anim.data[2].z = (
+    p0_out[:, 0], p0_out[:, 1], p0_out_v
+)
+fig_anim.data[3].x, fig_anim.data[3].y, fig_anim.data[3].z = (
+    p0_in[:, 0], p0_in[:, 1], p0_in_v
+)
+fig_anim.data[4].x, fig_anim.data[4].y, fig_anim.data[4].z = (
+    m0_out[:, 0], m0_out[:, 1], m0_out_v
+)
+fig_anim.data[5].x, fig_anim.data[5].y, fig_anim.data[5].z = (
+    m0_in[:, 0], m0_in[:, 1], m0_in_v
+)
+
 scene_style = dict(
     xaxis=dict(title="X", range=[0, 1]),
     yaxis=dict(title="Y", range=[0, 1]),
@@ -581,7 +603,7 @@ fig_anim.update_layout(
                     args=[
                         None,
                         {
-                            "frame": {"duration": int(animation_seconds * 1000 / frame_count), "redraw": False},
+                            "frame": {"duration": int(animation_seconds * 1000 / frame_count), "redraw": True},
                             "transition": {"duration": 0},
                             "fromcurrent": True,
                             "mode": "immediate",
@@ -594,7 +616,7 @@ fig_anim.update_layout(
                     args=[
                         [None],
                         {
-                            "frame": {"duration": 0, "redraw": False},
+                            "frame": {"duration": 0, "redraw": True},
                             "transition": {"duration": 0},
                             "mode": "immediate",
                         },
@@ -617,7 +639,7 @@ fig_anim.update_layout(
                     args=[
                         [str(i)],
                         {
-                            "frame": {"duration": 0, "redraw": False},
+                            "frame": {"duration": 0, "redraw": True},
                             "transition": {"duration": 0},
                             "mode": "immediate",
                         },
