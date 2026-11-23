@@ -393,131 +393,133 @@ with right:
 
 st.markdown(f"**True integral:** `{actual:.10f}`")
 
-# Point distribution charts
-st.subheader("Sample Distribution")
-fig = make_subplots(
-    rows=1,
-    cols=2,
-    subplot_titles=("Plain Monte Carlo", "MISER Algorithm"),
-    horizontal_spacing=0.10,
+# 3-D surface and sampled points
+st.subheader("3D Function Surface & Sample Distribution")
+st.caption(
+    "The surface shows f(x, y), while the dots show the sampled coordinates "
+    "placed at their corresponding function heights."
 )
 
-def add_sample_trace(fig, sample_result, col, color, name):
+fig3d = make_subplots(
+    rows=1,
+    cols=2,
+    specs=[[{"type": "scene"}, {"type": "scene"}]],
+    subplot_titles=("Plain Monte Carlo", "MISER Algorithm"),
+    horizontal_spacing=0.02,
+)
+
+grid_axis = np.linspace(0, 1, 100)
+xx, yy = np.meshgrid(grid_axis, grid_axis)
+grid_points = np.column_stack([xx.ravel(), yy.ravel()])
+zz = evaluate_function(grid_points, test_name).reshape(xx.shape)
+
+# Surface of the selected integrand.
+for col in (1, 2):
+    fig3d.add_trace(
+        go.Surface(
+            x=xx,
+            y=yy,
+            z=zz,
+            colorscale="Viridis",
+            opacity=0.72,
+            showscale=(col == 2),
+            colorbar=dict(title="f(x, y)", len=0.72, x=1.02) if col == 2 else None,
+            name="Function surface",
+            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
+        ),
+        row=1,
+        col=col,
+    )
+
+def add_3d_samples(fig, sample_result, col, inside_color, group_name):
     pts = sample_result["points"]
     vals = sample_result["values"]
     if len(pts) == 0:
         return
-    # Limit displayed points to keep the browser responsive.
-    display_count = min(6000, len(pts))
+
+    # Keep the browser responsive while retaining a representative sample.
+    display_count = min(5000, len(pts))
     indices = np.linspace(0, len(pts) - 1, display_count, dtype=int)
-    p = pts[indices]
-    v = vals[indices]
-    inside = v > 0
+    sampled_points = pts[indices]
+    sampled_values = vals[indices]
+    inside_mask = sampled_values > 0
 
     fig.add_trace(
-        go.Scatter(
-            x=p[~inside, 0],
-            y=p[~inside, 1],
+        go.Scatter3d(
+            x=sampled_points[~inside_mask, 0],
+            y=sampled_points[~inside_mask, 1],
+            z=sampled_values[~inside_mask],
             mode="markers",
-            name=f"{name} outside",
-            marker=dict(color="#9CA3AF", size=4, opacity=0.45),
-            legendgroup=name,
+            name=f"{group_name} outside",
+            marker=dict(color="#A0A7B4", size=2.5, opacity=0.55),
             showlegend=(col == 1),
+            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
         ),
-        row=1, col=col,
+        row=1,
+        col=col,
     )
     fig.add_trace(
-        go.Scatter(
-            x=p[inside, 0],
-            y=p[inside, 1],
+        go.Scatter3d(
+            x=sampled_points[inside_mask, 0],
+            y=sampled_points[inside_mask, 1],
+            z=sampled_values[inside_mask],
             mode="markers",
-            name=f"{name} inside",
-            marker=dict(color=color, size=5, opacity=0.75),
-            legendgroup=name,
+            name=f"{group_name} inside",
+            marker=dict(color=inside_color, size=3.5, opacity=0.9),
             showlegend=(col == 1),
+            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
         ),
-        row=1, col=col,
+        row=1,
+        col=col,
     )
 
-add_sample_trace(fig, plain, 1, "#3977C3", "Plain MC")
-add_sample_trace(fig, miser, 2, "#F28E2B", "MISER")
+add_3d_samples(fig3d, plain, 1, "#3977C3", "Plain MC")
+add_3d_samples(fig3d, miser, 2, "#F28E2B", "MISER")
 
-# Draw MISER's recursive split boundaries on the right-hand plot.
+# MISER split boundaries are drawn as vertical planes/lines in its 3-D scene.
+z_top = max(float(np.max(zz)), 1.0 if test_name == "Circle" else 0.05)
 for split in miser["splits"]:
-    box = split["bounds"]
+    split_box = split["bounds"]
     dim = split["dimension"]
     coordinate = split["coordinate"]
     if dim == 0:
-        fig.add_trace(
-            go.Scatter(
-                x=[coordinate, coordinate],
-                y=[box[1][0], box[1][1]],
-                mode="lines",
-                line=dict(color="#D97706", width=1, dash="dash"),
-                name="MISER split boundary",
-                showlegend=False,
-                hoverinfo="skip",
-            ),
-            row=1, col=2,
-        )
+        x_line = [coordinate, coordinate]
+        y_line = [split_box[1][0], split_box[1][1]]
     else:
-        fig.add_trace(
-            go.Scatter(
-                x=[box[0][0], box[0][1]],
-                y=[coordinate, coordinate],
-                mode="lines",
-                line=dict(color="#D97706", width=1, dash="dash"),
-                name="MISER split boundary",
-                showlegend=False,
-                hoverinfo="skip",
-            ),
-            row=1, col=2,
-        )
+        x_line = [split_box[0][0], split_box[0][1]]
+        y_line = [coordinate, coordinate]
 
-if test_name == "Circle":
-    theta = np.linspace(0, 2 * np.pi, 300)
-    circle_x = CENTER[0] + RADIUS * np.cos(theta)
-    circle_y = CENTER[1] + RADIUS * np.sin(theta)
-    for col in (1, 2):
-        fig.add_trace(
-            go.Scatter(
-                x=circle_x,
-                y=circle_y,
-                mode="lines",
-                line=dict(color="#222222", width=2),
-                name="Circle boundary",
-                showlegend=(col == 1),
-            ),
-            row=1, col=col,
-        )
-else:
-    x_grid = np.linspace(0, 1, 120)
-    y_grid = np.linspace(0, 1, 120)
-    xx, yy = np.meshgrid(x_grid, y_grid)
-    grid_points = np.column_stack([xx.ravel(), yy.ravel()])
-    zz = gaussian_function(grid_points).reshape(xx.shape)
-    for col in (1, 2):
-        fig.add_trace(
-            go.Contour(
-                x=x_grid,
-                y=y_grid,
-                z=zz,
-                contours=dict(coloring="lines", showlabels=False),
-                line=dict(color="#333333", width=1),
-                showscale=False,
-                name="Gaussian contours",
-                showlegend=(col == 1),
-                hoverinfo="skip",
-            ),
-            row=1, col=col,
-        )
+    # A vertical indicator of the split, shown at the upper edge of the plot.
+    fig3d.add_trace(
+        go.Scatter3d(
+            x=x_line,
+            y=y_line,
+            z=[z_top * 1.03, z_top * 1.03],
+            mode="lines",
+            line=dict(color="#D97706", width=5, dash="dash"),
+            name="MISER split",
+            showlegend=False,
+            hoverinfo="skip",
+        ),
+        row=1,
+        col=2,
+    )
 
-fig.update_xaxes(title_text="X", range=[0, 1], row=1, col=1)
-fig.update_yaxes(title_text="Y", range=[0, 1], scaleanchor="x", scaleratio=1, row=1, col=1)
-fig.update_xaxes(title_text="X", range=[0, 1], row=1, col=2)
-fig.update_yaxes(title_text="Y", range=[0, 1], scaleanchor="x2", scaleratio=1, row=1, col=2)
-fig.update_layout(height=560, margin=dict(l=20, r=20, t=60, b=20), legend=dict(orientation="h"))
-st.plotly_chart(fig, use_container_width=True)
+scene_common = dict(
+    xaxis=dict(title="X", range=[0, 1]),
+    yaxis=dict(title="Y", range=[0, 1]),
+    zaxis=dict(title="f(x, y)", rangemode="tozero"),
+    aspectmode="cube",
+    camera=dict(eye=dict(x=1.55, y=1.55, z=1.15)),
+)
+fig3d.update_layout(
+    height=680,
+    margin=dict(l=0, r=30, t=65, b=0),
+    legend=dict(orientation="h", y=-0.05),
+    scene=scene_common,
+    scene2=scene_common,
+)
+st.plotly_chart(fig3d, use_container_width=True)
 
 # Comparison table and chart
 st.subheader("Performance Comparison")
