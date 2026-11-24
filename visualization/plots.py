@@ -252,10 +252,11 @@ def partition_figure_2d(regions, max_density, circle):
             hovertext=_hover(r) + f"<br>Evaluation density: {d:,.0f} / unit area",
             hoverinfo="text", hoveron="fills", showlegend=False,
         ))
-    cx, cy = _circle(circle)
-    fig.add_trace(go.Scatter(x=cx, y=cy, mode="lines", name="Circle boundary",
-                             line=dict(color=CURVE_COLOR, width=2, dash="dash"),
-                             hoverinfo="skip"))
+    if circle is not None:   # optional overlay (circle, or 2σ ring of a peak)
+        cx, cy = _circle(circle)
+        fig.add_trace(go.Scatter(x=cx, y=cy, mode="lines", name="Target outline",
+                                 line=dict(color=CURVE_COLOR, width=2, dash="dash"),
+                                 hoverinfo="skip"))
     fig.update_xaxes(range=[0, 1], title_text="x", constrain="domain")
     fig.update_yaxes(range=[0, 1], title_text="y", scaleanchor="x",
                      constrain="domain")

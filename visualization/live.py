@@ -9,7 +9,8 @@ Python 쪽은 *실제 알고리즘 실행 결과*를 실행 순서 그대로 직
 값으로 돌려주고, app.py 는 그 신호로 최종 통계를 표시한다.
 
 - 샘플 순서: run_*()가 반환한 points 배열 순서 = 실제 함수 평가 순서.
-- 원 내부 판정: run_*()가 반환한 values (= circle_indicator, 0/1) 를 그대로 사용.
+- 점 색: run_*()가 반환한 values 를 그대로 사용. 0/1 시나리오(binary)는 안/밖 두 색,
+  연속 시나리오는 f 값에 비례한 진하기.
 - MISER 분할선: splits[i]["after_eval"] 시점(해당 분할을 결정한 파일럿
   샘플을 모두 평가한 직후)에 표시.
 - MISER 리프 영역: nodes[...]["eval_start"] 부터 count 개의 본 샘플.
@@ -49,20 +50,30 @@ def _empty_algo():
     return {"x": [], "y": [], "v": [], "elapsed": 0.0, "estimate": 0.0}
 
 
-def blank_payload(circle, reference):
-    """Idle state before the first run: only the square and the circle."""
-    cx, cy, r = circle
+def _overlay(circle):
+    return list(circle) if circle is not None else None
+
+
+def _values(res, binary):
+    return (res["values"].astype(int).tolist() if binary
+            else _r(res["values"], 5))
+
+
+def blank_payload(circle, reference, binary=True):
+    """Idle state before the first run: only the square (and optional outline)."""
     ms = _empty_algo()
     ms.update(kind=[], leaves=[], splits=[], nodes=[])
-    return {"run_id": 0, "n": 0, "circle": [cx, cy, r], "reference": reference,
+    return {"run_id": 0, "n": 0, "circle": _overlay(circle), "binary": bool(binary),
+            "vmax": 1.0, "reference": reference,
             "seconds": PLAYBACK_SECONDS, "mc": _empty_algo(), "ms": ms}
 
 
 def build_payload(run_id, integrand, mc, ms, reference):
-    """Serialize the real circle-indicator runs for the browser animation."""
+    """Serialize the real runs (in evaluation order) for the browser animation."""
     n = int(mc["evaluations"])
     assert n == ms["evaluations"]
-    cx, cy, r = integrand.circle
+    binary = bool(integrand.area_mode)
+    vmax = float(max(mc["values"].max(), ms["values"].max(), 1e-12))
 
     leaves = []
     for nd in sorted((nd for nd in ms["nodes"] if nd["leaf"]),
@@ -86,17 +97,19 @@ def build_payload(run_id, integrand, mc, ms, reference):
     return {
         "run_id": run_id,
         "n": n,
-        "circle": [cx, cy, r],
+        "circle": _overlay(integrand.circle),
+        "binary": binary,
+        "vmax": vmax,
         "reference": reference,
         "seconds": PLAYBACK_SECONDS,
         "mc": {
             "x": _r(mc["points"][:, 0]), "y": _r(mc["points"][:, 1]),
-            "v": mc["values"].astype(int).tolist(),
+            "v": _values(mc, binary),
             "elapsed": mc["elapsed"], "estimate": mc["estimate"],
         },
         "ms": {
             "x": _r(ms["points"][:, 0]), "y": _r(ms["points"][:, 1]),
-            "v": ms["values"].astype(int).tolist(),
+            "v": _values(ms, binary),
             "kind": ms["kinds"].astype(int).tolist(),
             "leaves": leaves, "splits": splits, "nodes": nodes,
             "elapsed": ms["elapsed"], "estimate": ms["estimate"],

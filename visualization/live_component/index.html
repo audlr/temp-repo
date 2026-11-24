@@ -58,15 +58,15 @@
 
 <script>
 /*
- * Circle-sampling player (no controls: started by the sidebar's Run Comparison).
+ * Sampling player (no controls: started by the sidebar's Run Comparison).
  *
  * Plotly draws only the empty unit-square axes. Points are painted on a canvas
  * layer and only the NEW points are painted each frame, so earlier points are
  * kept and 100k samples stay smooth. Layers (bottom → top):
- *   plotly axes | MISER split lines | points | circle + current MISER region
+ *   plotly axes | MISER split lines | points | optional outline + current MISER region
  *
- * Inside/outside colouring uses the algorithm's own f values (circle indicator,
- * 1 = inside), i.e. the real judgement made during the run.
+ * Colouring uses the algorithm's own f values. Binary (0/1) scenarios: f = 1 in
+ * colour, f = 0 in gray. Continuous scenarios: darker = larger f (5 shades).
  */
 
 function send(type, data) {
@@ -127,12 +127,26 @@ function clearLayer(c) {
 
 function dot(ctx, x, y, r) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 6.2832); }
 
-// Append samples [from, to): coloured by the algorithm's own inside/outside value.
+// Continuous scenarios: 5 shades of the algorithm colour by f / max f.
+const RGB = {mc: "31,119,180", ms: "255,127,14"};
+function shadeOf(v) { return Math.min(4, Math.floor(5 * v / (D.vmax || 1))); }
+
+// Append samples [from, to): coloured by the algorithm's own f value.
 function paintPoints(P, src, from, to) {
   if (to <= from) return;
   P.painted += to - from;
   const ctx = P.layers.points.getContext("2d"), m = P.map;
   const r = Math.max(1.3, Math.min(2.2, 9000 / Math.max(D.n, 1)));
+  if (!D.binary) {
+    for (let b = 0; b < 5; b++) {
+      ctx.fillStyle = b === 0 ? OUTSIDE[P.key] : `rgba(${RGB[P.key]},${0.2 + 0.18 * b})`;
+      ctx.beginPath();
+      for (let i = from; i < to; i++)
+        if (shadeOf(src.v[i]) === b) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
+      ctx.fill();
+    }
+    return;
+  }
   ctx.fillStyle = OUTSIDE[P.key]; ctx.beginPath();
   for (let i = from; i < to; i++) if (!src.v[i]) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
   ctx.fill();
@@ -153,13 +167,15 @@ function paintSplits(from, to) {
   }
 }
 
-// Top layer: the circle (always above the points) and the MISER region being sampled.
+// Top layer: optional outline (above the points) and the MISER region being sampled.
 function paintTop(P) {
   const c = P.layers.top, ctx = c.getContext("2d"), m = P.map;
   clearLayer(c);
-  const [cx, cy, r] = D.circle;
-  ctx.strokeStyle = C.circle; ctx.lineWidth = 2; ctx.beginPath();
-  ctx.arc(m.px(cx), m.py(cy), r * m.scale, 0, 6.2832); ctx.stroke();
+  if (D.circle) {
+    const [cx, cy, r] = D.circle;
+    ctx.strokeStyle = C.circle; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.arc(m.px(cx), m.py(cy), r * m.scale, 0, 6.2832); ctx.stroke();
+  }
   if (P.key === "ms" && S && S.curLeaf >= 0) {
     const l = D.ms.leaves[S.curLeaf];
     ctx.strokeStyle = C.current; ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]);
@@ -171,10 +187,12 @@ function paintTop(P) {
 function legends() {
   const item = (cls, color, label) => `<span><i class="${cls}" style="${
     cls === "dot" ? "background" : "border-top-color"}:${color}"></i>${label}</span>`;
-  $("mc-legend").innerHTML = item("line", C.circle, "Circle") +
-    item("dot", C.mc, "Inside circle") + item("dot", "#94a3b8", "Outside circle");
-  $("ms-legend").innerHTML = item("line", C.circle, "Circle") +
-    item("dot", C.ms, "Inside circle") + item("dot", "#94a3b8", "Outside circle") +
+  const outline = D.circle ? item("line", C.circle, "Target outline") : "";
+  const pts = (col) => D.binary
+    ? item("dot", col, "f = 1") + item("dot", "#94a3b8", "f = 0")
+    : item("dot", col, "Darker = larger f") + item("dot", "#94a3b8", "f ≈ 0");
+  $("mc-legend").innerHTML = outline + pts(C.mc);
+  $("ms-legend").innerHTML = outline + pts(C.ms) +
     item("line", "rgba(160,82,45,0.6)", "Split boundary") +
     item("line", C.current, "Region being sampled");
 }
@@ -182,7 +200,7 @@ function legends() {
 // ---------------------------------------------------------------- state
 function freshState() {
   return {shown: 0, progress: 0, lastTs: null, done: false, playing: false, reported: false,
-          mcIn: 0, msIn: 0,
+          mcIn: 0, msIn: 0, mcMax: 0, msMax: 0,
           leafPtr: 0, curLeaf: -1, curSum: 0, curCount: 0, curArea: 0,
           doneSum: 0, doneArea: 0, leavesDone: 0, splitPtr: 0, nodePtr: 0,
           depth: 0, maxDepth: 0};
@@ -193,7 +211,7 @@ function advance(to) {
   if (to <= from) return;
   const mc = D.mc, ms = D.ms, L = ms.leaves;
 
-  for (let i = from; i < to; i++) S.mcIn += mc.v[i];
+  for (let i = from; i < to; i++) { S.mcIn += mc.v[i]; S.mcMax = Math.max(S.mcMax, mc.v[i]); }
   paintPoints(PM, mc, from, to);
 
   let topDirty = false;
@@ -204,7 +222,7 @@ function advance(to) {
       topDirty = true;
     }
     if (ms.kind[i] === 1) { S.curSum += ms.v[i]; S.curCount++; }
-    S.msIn += ms.v[i];
+    S.msIn += ms.v[i]; S.msMax = Math.max(S.msMax, ms.v[i]);
   }
   if (S.curLeaf >= 0 && to >= L[S.curLeaf][0] + L[S.curLeaf][1]) { finishLeaf(); topDirty = true; }
   paintPoints(PS, ms, from, to);
@@ -221,7 +239,7 @@ function advance(to) {
 
 function finishLeaf() {
   const l = D.ms.leaves[S.curLeaf];
-  S.doneSum += l[8];   // the leaf's area × inside-fraction, as computed by run_miser
+  S.doneSum += l[8];   // the leaf's area × mean of f, as computed by run_miser
   S.doneArea += l[2];
   S.leavesDone++;
   S.curLeaf = -1; S.curSum = 0; S.curCount = 0; S.curArea = 0;
@@ -238,24 +256,29 @@ function paintStats() {
   $("mc-state").textContent = state; $("ms-state").textContent = state;
   $("mc-bar").style.width = pct + "%"; $("ms-bar").style.width = pct + "%";
 
-  // Plain MC: area = (inside / total) × square area (1) — identical to its estimator.
+  // Value chips: inside/outside counts for 0/1 scenarios, sum/mean/max of f otherwise.
+  const valueChips = (sum, max) => D.binary
+    ? chip("f = 1", fmtInt(sum)) + chip("f = 0", fmtInt(k - sum)) +
+      chip("Ratio f = 1", k ? (100 * sum / k).toFixed(2) + "%" : "—")
+    : chip("Σ f", fmt(sum, 2)) + chip("Mean f", k ? fmt(sum / k, 4) : "—") +
+      chip("Max f", fmt(max, 4));
+
+  // Plain MC: estimate = mean of f × square area (1) — identical to its estimator.
   const mcEst = S.done ? D.mc.estimate : (k ? S.mcIn / k : NaN);
   $("mc-chips").innerHTML =
     chip("Samples", `${fmtInt(k)} / ${fmtInt(n)}`) + chip("Progress", pct.toFixed(1) + "%") +
-    chip("Inside", fmtInt(S.mcIn)) + chip("Outside", fmtInt(k - S.mcIn)) +
-    chip("Inside ratio", k ? (100 * S.mcIn / k).toFixed(2) + "%" : "—") +
+    valueChips(S.mcIn, S.mcMax) +
     chip(S.done ? "Final estimate" : "Estimate", fmt(mcEst)) +
-    chip("True area πr²", fmt(D.reference));
+    chip("Exact value", fmt(D.reference));
 
-  // MISER: weighted estimate = Σ region area × inside-fraction of that region,
-  // never the overall inside ratio. While running it covers only finished regions.
+  // MISER: weighted estimate = Σ region area × mean of f in that region,
+  // never the overall mean. While running it covers only finished regions.
   const curPart = S.curCount ? S.curArea * S.curSum / S.curCount : 0;
   const covered = S.doneArea + (S.curCount ? S.curArea : 0);
   const msEst = S.done ? D.ms.estimate : (covered > 0 ? S.doneSum + curPart : NaN);
   $("ms-chips").innerHTML =
     chip("Samples", `${fmtInt(k)} / ${fmtInt(n)}`) + chip("Progress", pct.toFixed(1) + "%") +
-    chip("Inside", fmtInt(S.msIn)) + chip("Outside", fmtInt(k - S.msIn)) +
-    chip("Inside ratio", k ? (100 * S.msIn / k).toFixed(2) + "%" : "—") +
+    valueChips(S.msIn, S.msMax) +
     chip(S.done ? "Final estimate" : `Estimate · ${(100 * covered).toFixed(0)}% area`, fmt(msEst)) +
     chip("Depth", `${S.depth} (max ${S.maxDepth})`);
 }
