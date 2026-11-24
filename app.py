@@ -373,9 +373,9 @@ st.subheader("Run Results")
 def highlighted_metric(label, value):
     """A metric card with a highlighted background: the number to look at."""
     st.markdown(
-        '<div style="background:#fff4c2;border:2px solid #f59e0b;border-radius:10px;'
+        '<div style="background:rgba(245,158,11,0.18);border:2px solid #f59e0b;border-radius:10px;'
         'padding:6px 12px;margin-bottom:12px">'
-        f'<div style="font-size:0.875rem;color:#555">{label}</div>'
+        f'<div style="font-size:0.875rem;opacity:0.75">{label}</div>'
         f'<div style="font-size:2.25rem;line-height:1.3">{value}</div></div>',
         unsafe_allow_html=True,
     )

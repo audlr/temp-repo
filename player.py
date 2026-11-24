@@ -77,7 +77,7 @@ def render(payload, height=640):
 
 _TEMPLATE = r"""
 <!doctype html><html><head><meta charset="utf-8"><style>
- body{margin:0;font-family:"Source Sans Pro","Segoe UI",sans-serif;color:#262730}
+ body{margin:0;padding:8px;font-family:"Source Sans Pro","Segoe UI",sans-serif;color:#262730;background:#ffffff;border-radius:8px}
  .bar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;margin:2px 0 8px}
  .bar button{background:#ff4b4b;color:#fff;border:0;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px}
  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
