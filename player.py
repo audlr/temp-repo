@@ -5,9 +5,9 @@ The Python side turns the recorded MISER events (pilot draws, split
 decisions, leaf draws, in evaluation order) and the plain Monte Carlo
 samples into one JSON payload. The browser replays both runs side by side
 on canvas layers. At each split decision up to a chosen depth the replay
-pauses briefly: the split line appears, both halves show their pilot
-standard deviation and the share of the remaining samples they receive,
-and the half that gets more samples is highlighted.
+pauses briefly: the split line appears, both halves show the share of the
+remaining samples they receive, and the half that gets more samples flashes
+once.
 """
 
 import json
@@ -149,18 +149,19 @@ function drawTop(t){
     x.strokeRect(p.px(b[0]),p.py(b[3]),p.px(b[1])-p.px(b[0]),p.py(b[2])-p.py(b[3]));x.setLineDash([]);}
   if(S.paused>=0){
     const d=D.decisions[S.paused],H=halves(d),big=d.share[0]>=d.share[1]?0:1;
-    const pulse=0.25+0.2*Math.sin(t/140);
-    H.forEach((h,i)=>{x.fillStyle=i===big?`rgba(255,127,14,${pulse})`:"rgba(120,120,120,0.10)";
+    const flash=0.5*Math.max(0,1-(t-S.pauseStart)/PAUSE_MS);   // one short flash, fading out
+    H.forEach((h,i)=>{x.fillStyle=i===big?`rgba(255,127,14,${flash})`:"rgba(120,120,120,0.08)";
       x.fillRect(p.px(h[0]),p.py(h[3]),p.px(h[1])-p.px(h[0]),p.py(h[2])-p.py(h[3]));});
     splitLine(x,p,d,3,"#7f3f00");
     H.forEach((h,i)=>{const cx=p.px((h[0]+h[1])/2),cy=p.py((h[2]+h[3])/2);
-      const lines=[`σ ${d.std[i].toPrecision(2)}`,`${Math.round(100*d.share[i])}% of samples`];
-      x.font=(i===big?"bold ":"")+"12px sans-serif";x.textAlign="center";
-      lines.forEach((s,k)=>{const yy=cy+(k-0.5)*15;x.fillStyle="rgba(255,255,255,0.85)";
-        const w=x.measureText(s).width+8;x.fillRect(cx-w/2,yy-11,w,15);x.fillStyle=i===big?"#7f3f00":"#555";x.fillText(s,cx,yy);});});
+      const s=`${Math.round(100*d.share[i])}%`;
+      x.font=(i===big?"bold ":"")+"13px sans-serif";x.textAlign="center";
+      x.fillStyle="rgba(255,255,255,0.85)";const w=x.measureText(s).width+8;x.fillRect(cx-w/2,cy-11,w,16);
+      x.fillStyle=i===big?"#7f3f00":"#555";x.fillText(s,cx,cy+1);});
   }
 }
 let S=null, raf=null;
+const PAUSE_MS=700;   // short stop at each decision
 function start(){
   if(raf)cancelAnimationFrame(raf);
   setup("mc");setup("ms");
@@ -180,7 +181,7 @@ function tick(t){
   // stop exactly at the next decision
   while(S.dec<D.decisions.length&&D.decisions[S.dec].at<=to){
     const d=D.decisions[S.dec];
-    if(pauseOn&&d.depth<=pd){to=Math.max(S.k,d.at);S.prog=to;S.paused=S.dec;S.pauseUntil=t+1600;S.dec++;break;}
+    if(pauseOn&&d.depth<=pd){to=Math.max(S.k,d.at);S.prog=to;S.paused=S.dec;S.pauseStart=t;S.pauseUntil=t+PAUSE_MS;S.dec++;break;}
     splitLine(P.ms.L.lines.getContext("2d"),P.ms,d,Math.max(0.6,1.4-0.15*d.depth),"rgba(160,82,45,0.55)");S.dec++;
   }
   if(to>S.k){

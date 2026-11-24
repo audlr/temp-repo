@@ -387,9 +387,9 @@ st.markdown(f"**True integral:** `{actual:.10f}`")
 st.subheader("Live Sampling Animation")
 st.caption(
     "Both runs are replayed in the order the samples were evaluated. "
-    "MISER pauses at each split decision: the split line appears, each half shows "
-    "its pilot standard deviation (σ) and its share of the remaining samples, and "
-    "the half that receives more samples is highlighted. The grey background is f."
+    "MISER pauses briefly at each split decision: the split line appears, each half "
+    "shows its share of the remaining samples, and the half that receives more "
+    "samples flashes once. The grey background is f."
 )
 # Re-run MISER with the same seed only to record its events; the recorded run is
 # identical to the timed one above (recording consumes no random numbers).
