@@ -1,12 +1,4 @@
-"""
-테스트 시나리오.
-
-app.py 는 import 하는 순간 Streamlit UI 코드가 실행되므로, app.py 를 ast 로 파싱해
-알고리즘 함수(standard_monte_carlo, miser_monte_carlo)만 꺼내 실행한다.
-시연 시나리오는 scenarios.py 에서 그대로 import 한다.
-numpy + pytest 만으로 실행된다:  python -m pytest -q tests
-"""
-
+# 시나리오 4개의 정답값과 알고리즘 동작을 확인하기 위해 추가
 import ast
 import math
 import pathlib
@@ -61,7 +53,6 @@ def errs(key, n=20_000, seeds=20):
     return mc, ms
 
 
-# ------------------------------------------------------------- 1. 시나리오 정의·정답
 def test_scenario_registry_shape():
     assert KEYS == ["circle", "joint_default", "interference", "peak"]
     for sc in SCENARIOS.values():
@@ -71,7 +62,6 @@ def test_scenario_registry_shape():
 
 @pytest.mark.parametrize("key", KEYS)
 def test_exact_matches_large_mc(key):
-    """정답이 대규모 일반 MC(200만 점)와 5 표준오차 안에서 일치."""
     v = SCENARIOS[key]["func"](rng(7).random((2_000_000, 2)))
     assert abs(v.mean() - SCENARIOS[key]["exact"]()) < 5 * v.std() / math.sqrt(len(v))
 
@@ -88,7 +78,7 @@ def test_joint_default_is_binary_and_in_corner():
     p = rng(0).random((200_000, 2))
     v = f(p)
     assert set(np.unique(v)) <= {0.0, 1.0}
-    assert np.all(p[v == 1, 0] < 0.02)  # 회사1 부도 <=> u1 < PD
+    assert np.all(p[v == 1, 0] < 0.02)
 
 
 def test_peak_maximum_at_center():
@@ -97,7 +87,6 @@ def test_peak_maximum_at_center():
     assert f(np.array([[0.9, 0.9]]))[0] < 1e-50
 
 
-# ------------------------------------------------------------- 2. 예산·구조
 @pytest.mark.parametrize("n", [500, 1_000, 10_000, 100_000])
 @pytest.mark.parametrize("key", KEYS)
 def test_equal_evaluation_budget(n, key):
@@ -109,7 +98,7 @@ def test_equal_evaluation_budget(n, key):
 
 
 def test_small_budget_is_plain_leaf():
-    ms = miser(SCENARIOS["peak"]["func"], UNIT2, 500, rng(0))  # 500 < 2·256
+    ms = miser(SCENARIOS["peak"]["func"], UNIT2, 500, rng(0))
     assert ms["splits"] == [] and ms["depth"] == 0 and len(ms["points"]) == 500
 
 
@@ -143,22 +132,18 @@ def test_constant_function_is_exact(bounds, expected):
                         expected, rel_tol=1e-12)
 
 
-# ------------------------------------------------------------- 3. 시연 시나리오의 기대 결과
 @pytest.mark.parametrize("key", ["peak", "joint_default"])
 def test_miser_clearly_wins_on_concentrated_scenarios(key):
-    """별빛·동시 부도: MISER RMSE 가 최소 3배 작다 (확인 당시 약 9배, 17배)."""
     mc, ms = errs(key)
     assert rmse(mc) > 3 * rmse(ms)
 
 
 def test_interference_miser_loses():
-    """간섭 무늬(반례1): 나눌 이득이 없어 MC보다 나쁨 (확인 당시 약 0.54배)."""
     mc, ms = errs("interference", seeds=30)
     assert rmse(ms) > rmse(mc)
 
 
 def test_circle_miser_wins():
-    """원 넓이: 이 구현에서는 MISER 가 낫다 (확인 당시 n=10,000 에서 약 3.3배)."""
     mc, ms = errs("circle", n=10_000, seeds=30)
     assert rmse(ms) < rmse(mc)
 

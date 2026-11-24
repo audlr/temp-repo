@@ -1,4 +1,4 @@
-streamlit>=1.39
+streamlit>=1.39  # 하이라이트(st.container key)를 쓰기 위해 수정
 numpy>=1.26
 pandas>=2.0
 plotly>=5.20
