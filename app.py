@@ -370,23 +370,23 @@ miser_error = abs(miser["estimate"] - actual)
 
 st.subheader("Run Results")
 
-def highlighted_metric(label, value):
-    """A metric card with a highlighted background: the number to look at."""
-    st.markdown(
-        '<div style="background:rgba(245,158,11,0.18);border:2px solid #f59e0b;border-radius:10px;'
-        'padding:6px 12px;margin-bottom:12px">'
-        f'<div style="font-size:0.875rem;opacity:0.75">{label}</div>'
-        f'<div style="font-size:2.25rem;line-height:1.3">{value}</div></div>',
-        unsafe_allow_html=True,
-    )
-
-
+# Highlight the two Absolute Error cards (amber background via container keys).
+st.markdown(
+    """<style>
+    .st-key-hlplainabs, .st-key-hlmiserabs {
+        background: rgba(245, 158, 11, 0.18); border: 2px solid #f59e0b;
+        border-radius: 10px; padding: 4px 12px;
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
 left, right = st.columns(2)
 
 with left:
     st.markdown("### 🔵 Plain Monte Carlo")
     st.metric("Estimated Integral", f'{plain["estimate"]:.8f}')
-    highlighted_metric("Absolute Error", f"{plain_error:.8f}")
+    with st.container(key="hlplainabs"):
+        st.metric("Absolute Error", f"{plain_error:.8f}")
     st.metric("Execution Time", f'{result["plain_time"]:.4f} s')
     st.caption(
         f'Evaluations: {plain["evaluations"]:,}'
@@ -398,7 +398,8 @@ with left:
 with right:
     st.markdown("### 🟠 MISER Algorithm")
     st.metric("Estimated Integral", f'{miser["estimate"]:.8f}')
-    highlighted_metric("Absolute Error", f"{miser_error:.8f}")
+    with st.container(key="hlmiserabs"):
+        st.metric("Absolute Error", f"{miser_error:.8f}")
     st.metric("Execution Time", f'{result["miser_time"]:.4f} s')
     st.caption(
         f'Evaluations: {miser["evaluations"]:,} | '
