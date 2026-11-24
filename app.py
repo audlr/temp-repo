@@ -32,7 +32,11 @@ from scenarios import DEMO as PRESETS
 from scenarios import SCENARIOS
 from visualization import live, plots
 
-# 원 하나 대신 시나리오 4개를 쓰기 위해 수정
+CIRCLE = INTEGRANDS["circle"]
+BOUNDS = make_bounds(CIRCLE, 0, 1)
+REFERENCE = CIRCLE.reference(BOUNDS)
+CX, CY, R = CIRCLE.circle
+# 원 하나 대신 시나리오 4개를 쓰기 위해 추가
 DEMO_KEYS = tuple(SCENARIOS)
 DEMO = {
     k: INTEGRANDS[k] if k == "circle" else Integrand(
@@ -94,12 +98,9 @@ with st.sidebar:
                  "2 × threshold + pilot cost. Smaller values → deeper recursion.",
         )
     run_clicked = st.button("Run Comparison", type="primary", width="stretch")
-
-# 고른 시나리오로 계산하기 위해 추가
-TARGET = DEMO[scenario]
-BOUNDS = make_bounds(TARGET, 0, 1)
-REFERENCE = TARGET.reference(BOUNDS)
-with st.sidebar:
+    CIRCLE = DEMO[scenario]  # 고른 시나리오로 계산하기 위해 추가
+    BOUNDS = make_bounds(CIRCLE, 0, 1)  # 고른 시나리오로 계산하기 위해 추가
+    REFERENCE = CIRCLE.reference(BOUNDS)  # 고른 시나리오로 계산하기 위해 추가
     st.caption(
         # 시나리오별 설명과 정답값을 보여주기 위해 수정
         f"Target: {SCENARIOS[scenario]['description']} Exact integral = {REFERENCE:.6f}. "
@@ -111,14 +112,14 @@ settings = (scenario, int(n_samples), int(seed), int(leaf_size))  # 시나리오
 # ============================================================ run
 if run_clicked:
     with st.spinner("Running Plain Monte Carlo and MISER..."):
-        mc, ms = run_pair(TARGET, BOUNDS, int(n_samples), int(seed), int(leaf_size))
-        sweep_rows = sweep(TARGET, BOUNDS, int(seed), int(leaf_size))
+        mc, ms = run_pair(CIRCLE, BOUNDS, int(n_samples), int(seed), int(leaf_size))
+        sweep_rows = sweep(CIRCLE, BOUNDS, int(seed), int(leaf_size))
     run_id = st.session_state.get("run_counter", 0) + 1
     st.session_state["run_counter"] = run_id
     st.session_state["run"] = {
         "settings": settings, "mc": mc, "ms": ms, "sweep": sweep_rows,
         "run_id": run_id,
-        "payload": live.build_payload(run_id, TARGET, mc, ms, REFERENCE),
+        "payload": live.build_payload(run_id, CIRCLE, mc, ms, REFERENCE),
     }
     st.session_state.pop("repeated", None)
 
@@ -130,7 +131,7 @@ if run and run["settings"] != settings:
                "to apply the new settings.")
 
 # ============================================================ animation (top)
-payload = run["payload"] if run else live.blank_payload(TARGET.circle, REFERENCE, TARGET.area_mode)
+payload = run["payload"] if run else live.blank_payload(CIRCLE.circle, REFERENCE)
 finished_id = live.live_sampling(payload)
 if run and finished_id == run["run_id"]:
     st.session_state["anim_done"] = run["run_id"]
@@ -152,9 +153,9 @@ if not done:
 
 r_scenario, r_n, r_seed, r_leaf = run["settings"]
 # 통계를 화면에 보이는 실행의 시나리오 기준으로 계산하기 위해 추가
-TARGET = DEMO[r_scenario]
-BOUNDS = make_bounds(TARGET, 0, 1)
-REFERENCE = TARGET.reference(BOUNDS)
+CIRCLE = DEMO[r_scenario]
+BOUNDS = make_bounds(CIRCLE, 0, 1)
+REFERENCE = CIRCLE.reference(BOUNDS)
 mc, ms = run["mc"], run["ms"]
 mc_abs, mc_rel = errors(mc["estimate"], REFERENCE)
 ms_abs, ms_rel = errors(ms["estimate"], REFERENCE)
@@ -174,7 +175,6 @@ st.markdown(
     </style>""",
     unsafe_allow_html=True,
 )
-
 c_mc, c_ms = st.columns(2)
 with c_mc:
     st.markdown('<h4 style="color:#1f77b4">Plain Monte Carlo</h4>', unsafe_allow_html=True)
@@ -295,7 +295,7 @@ with tab_err:
         with st.spinner("Running repeated experiments..."):
             st.session_state["repeated"] = {
                 "settings": run["settings"], "repeats": repeats,
-                "rows": repeated(TARGET, BOUNDS, r_seed, r_leaf, repeats),
+                "rows": repeated(CIRCLE, BOUNDS, r_seed, r_leaf, repeats),
             }
     rep = st.session_state.get("repeated")
     if rep and rep["settings"] == run["settings"]:
@@ -366,7 +366,7 @@ with tab_part:
                       for nd in regions)
     q1, q2 = st.columns([1.6, 1])
     with q1:
-        st.plotly_chart(plots.partition_figure_2d(regions, max_density, TARGET.circle),
+        st.plotly_chart(plots.partition_figure_2d(regions, max_density, CIRCLE.circle),
                         config={"displaylogo": False}, key="part")
         st.caption("Each rectangle is an actual MISER recursive call. Shade = samples "
                    "allocated per unit area, relative to the densest region at this "

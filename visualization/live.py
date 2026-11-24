@@ -59,11 +59,11 @@ def _values(res, binary):
             else _r(res["values"], 5))
 
 
-def blank_payload(circle, reference, binary=True):  # 시나리오를 받기 위해 수정
+def blank_payload(circle, reference):
     """Idle state before the first run: only the square and the circle."""
     ms = _empty_algo()
     ms.update(kind=[], leaves=[], splits=[], nodes=[])
-    return {"run_id": 0, "n": 0, "circle": _overlay(circle), "binary": bool(binary),
+    return {"run_id": 0, "n": 0, "circle": _overlay(circle), "binary": True,
             "vmax": 1.0, "heat": [], "reference": reference,
             "seconds": PLAYBACK_SECONDS, "mc": _empty_algo(), "ms": ms}
 
