@@ -9,48 +9,24 @@ import streamlit as st
 
 
 # ---------------------------------------------------------
-# Test functions and exact integrals
+# Test functions and exact integrals (see scenarios.py)
 # ---------------------------------------------------------
-CENTER = (0.70, 0.30)
-RADIUS = 0.15
-SIGMA = 0.06
+from scenarios import SCENARIOS
 
-
-def circle_indicator(points):
-    """1 inside the circle, 0 outside."""
-    dx = points[:, 0] - CENTER[0]
-    dy = points[:, 1] - CENTER[1]
-    return ((dx * dx + dy * dy) <= RADIUS**2).astype(float)
-
-
-def gaussian_function(points):
-    """Narrow 2-D Gaussian used in the original Python code."""
-    dx = points[:, 0] - CENTER[0]
-    dy = points[:, 1] - CENTER[1]
-    return np.exp(-(dx * dx + dy * dy) / (2 * SIGMA**2))
-
-
-def gaussian_1d_integral(a, b, mu, sigma=SIGMA):
-    return sigma * math.sqrt(math.pi / 2) * (
-        math.erf((b - mu) / (math.sqrt(2) * sigma))
-        - math.erf((a - mu) / (math.sqrt(2) * sigma))
-    )
+SCENARIO_KEYS = list(SCENARIOS)
 
 
 def exact_integral(test_name):
-    if test_name == "Circle":
-        # The entire circle lies inside the unit square.
-        return math.pi * RADIUS**2
-    return (
-        gaussian_1d_integral(0, 1, CENTER[0])
-        * gaussian_1d_integral(0, 1, CENTER[1])
-    )
+    return SCENARIOS[test_name]["exact"]()
 
 
 def evaluate_function(points, test_name):
-    if test_name == "Circle":
-        return circle_indicator(points)
-    return gaussian_function(points)
+    return SCENARIOS[test_name]["func"](points)
+
+
+def is_binary(test_name):
+    """0/1 indicator scenarios show inside/outside counts and colours."""
+    return SCENARIOS[test_name]["binary"]
 
 
 # ---------------------------------------------------------
@@ -275,8 +251,9 @@ with st.sidebar:
     )
     test_name = st.selectbox(
         "Test Function",
-        ["Circle", "Gaussian"],
-        help="Circle: indicator function. Gaussian: the narrow Gaussian from the original code.",
+        SCENARIO_KEYS,
+        format_func=lambda k: SCENARIOS[k]["label"],
+        help="Four demo scenarios: basics (circle), strength (joint default), limit (interference), risk (starlight peak).",
     )
 
     with st.expander("Advanced MISER Settings"):
@@ -299,17 +276,8 @@ with st.sidebar:
     run_button = st.button("Run Comparison", type="primary", use_container_width=True)
 
     st.divider()
-    if test_name == "Circle":
-        st.markdown(
-            "**Target:** circle centered at (0.70, 0.30), radius = 0.15.  \n"
-            "The function is 1 inside the circle and 0 outside."
-        )
-        st.latex(r"I = \pi r^2 \approx 0.070686")
-    else:
-        st.markdown(
-            "**Target:** narrow 2-D Gaussian centered at (0.70, 0.30), "
-            "with sigma = 0.06."
-        )
+    st.markdown(f"**Target:** {SCENARIOS[test_name]['description']}")
+    st.latex(rf"I = {exact_integral(test_name):.6f}")
 
 if run_button:
     bounds = [(0.0, 1.0), (0.0, 1.0)]
@@ -374,9 +342,10 @@ with left:
     st.metric("Absolute Error", f"{plain_error:.8f}")
     st.metric("Execution Time", f'{result["plain_time"]:.4f} s')
     st.caption(
-        f'Evaluations: {plain["evaluations"]:,} | '
-        f'Inside: {int(np.sum(plain["values"] > 0)):,} | '
-        f'Outside: {int(np.sum(plain["values"] == 0)):,}'
+        f'Evaluations: {plain["evaluations"]:,}'
+        + (f' | Inside: {int(np.sum(plain["values"] > 0)):,} | '
+           f'Outside: {int(np.sum(plain["values"] == 0)):,}'
+           if is_binary(test_name) else "")
     )
 
 with right:
@@ -386,9 +355,10 @@ with right:
     st.metric("Execution Time", f'{result["miser_time"]:.4f} s')
     st.caption(
         f'Evaluations: {miser["evaluations"]:,} | '
-        f'Inside: {int(np.sum(miser["values"] > 0)):,} | '
-        f'Outside: {int(np.sum(miser["values"] == 0)):,} | '
-        f'Depth: {miser["depth"]}'
+        + (f'Inside: {int(np.sum(miser["values"] > 0)):,} | '
+           f'Outside: {int(np.sum(miser["values"] == 0)):,} | '
+           if is_binary(test_name) else "")
+        + f'Depth: {miser["depth"]}'
     )
 
 st.markdown(f"**True integral:** `{actual:.10f}`")
@@ -407,7 +377,7 @@ animation_seconds = st.select_slider(
     format_func=lambda x: f"{x} seconds",
 )
 
-grid_axis = np.linspace(0, 1, 75)
+grid_axis = np.linspace(0, 1, 151)  # fine enough for the narrow peak and the fringes
 xx, yy = np.meshgrid(grid_axis, grid_axis)
 grid_points = np.column_stack([xx.ravel(), yy.ravel()])
 zz = evaluate_function(grid_points, test_name).reshape(xx.shape)
@@ -448,8 +418,8 @@ for col in (1, 2):
     )
 
 def split_sample_groups(points, values):
-    """Return outside and inside point arrays (for Circle); Gaussian points are all active."""
-    if test_name == "Circle":
+    """Split into outside/inside for 0/1 scenarios; continuous scenarios keep all points active."""
+    if is_binary(test_name):
         inside_mask = values > 0
     else:
         inside_mask = np.ones(len(values), dtype=bool)
@@ -464,13 +434,13 @@ for col, color, label in [
     (2, "#F28E2B", "MISER"),
 ]:
     outside_name = f"{label} outside"
-    inside_name = f"{label} samples" if test_name == "Gaussian" else f"{label} inside"
+    inside_name = f"{label} inside" if is_binary(test_name) else f"{label} samples"
     fig_anim.add_trace(
         go.Scatter3d(
             x=[], y=[], z=[], mode="markers",
             name=outside_name,
             marker=dict(color="#A0A7B4", size=2.5, opacity=0.48),
-            showlegend=(col == 1 and test_name == "Circle"),
+            showlegend=(col == 1 and is_binary(test_name)),
             hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
         ),
         row=1, col=col,
@@ -487,7 +457,7 @@ for col, color, label in [
     )
 
 # MISER split boundaries remain static throughout playback.
-z_top = max(float(np.max(zz)), 1.0 if test_name == "Circle" else 0.05)
+z_top = max(float(np.max(zz)), 1.0 if is_binary(test_name) else 0.05)
 for split in miser["splits"]:
     box = split["bounds"]
     dim, coordinate = split["dimension"], split["coordinate"]
