@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from scenarios import DEMO, SCENARIOS  # 시나리오 4개 추가
+from scenarios import DEMO, SCENARIOS
 
 # ---------------------------------------------------------
 # Test functions and exact integrals
