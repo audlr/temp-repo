@@ -370,25 +370,23 @@ miser_error = abs(miser["estimate"] - actual)
 
 st.subheader("Run Results")
 
-# What to look at in this scenario, with this run's numbers.
-plain_rel, miser_rel = plain_error / abs(actual), miser_error / abs(actual)
-if miser_rel > 0:
-    ratio = plain_rel / miser_rel
-    verdict = (f"MISER is **{ratio:.1f}x more accurate**" if ratio >= 1
-               else f"MISER is **{1 / ratio:.1f}x less accurate**")
-else:
-    verdict = "MISER hit the exact value"
-st.info(
-    f"👀 **What to look at** — {DEMO[test_name]['main']['focus']}\n\n"
-    f"This run: plain MC error **{plain_rel:.2%}**, MISER error **{miser_rel:.2%}** "
-    f"→ {verdict}."
-)
+def highlighted_metric(label, value):
+    """A metric card with a highlighted background: the number to look at."""
+    st.markdown(
+        '<div style="background:#fff4c2;border:2px solid #f59e0b;border-radius:10px;'
+        'padding:6px 12px;margin-bottom:12px">'
+        f'<div style="font-size:0.875rem;color:#555">{label}</div>'
+        f'<div style="font-size:2.25rem;line-height:1.3">{value}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
 left, right = st.columns(2)
 
 with left:
     st.markdown("### 🔵 Plain Monte Carlo")
     st.metric("Estimated Integral", f'{plain["estimate"]:.8f}')
-    st.metric("👉 Absolute Error", f"{plain_error:.8f}")
+    highlighted_metric("Absolute Error", f"{plain_error:.8f}")
     st.metric("Execution Time", f'{result["plain_time"]:.4f} s')
     st.caption(
         f'Evaluations: {plain["evaluations"]:,}'
@@ -400,7 +398,7 @@ with left:
 with right:
     st.markdown("### 🟠 MISER Algorithm")
     st.metric("Estimated Integral", f'{miser["estimate"]:.8f}')
-    st.metric("👉 Absolute Error", f"{miser_error:.8f}")
+    highlighted_metric("Absolute Error", f"{miser_error:.8f}")
     st.metric("Execution Time", f'{result["miser_time"]:.4f} s')
     st.caption(
         f'Evaluations: {miser["evaluations"]:,} | '
