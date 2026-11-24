@@ -12,7 +12,7 @@ import player
 # ---------------------------------------------------------
 # Test functions and exact integrals (see scenarios.py)
 # ---------------------------------------------------------
-from scenarios import SCENARIOS
+from scenarios import DEMO, SCENARIOS
 
 SCENARIO_KEYS = list(SCENARIOS)
 
@@ -250,27 +250,42 @@ st.caption(
     "sample allocation."
 )
 
+def apply_demo_preset():
+    """Choosing a scenario sets the seed and sample size that show it best."""
+    preset = DEMO[st.session_state["test_name"]]["main"]
+    st.session_state["n_samples"] = preset["n"]
+    st.session_state["seed"] = preset["seed"]
+
+
+if "test_name" not in st.session_state:
+    st.session_state["test_name"] = SCENARIO_KEYS[0]
+    apply_demo_preset()
+
 with st.sidebar:
     st.header("Experiment Settings")
+    test_name = st.selectbox(
+        "Test Function",
+        SCENARIO_KEYS,
+        key="test_name",
+        on_change=apply_demo_preset,
+        format_func=lambda k: SCENARIOS[k]["label"],
+        help="Four demo scenarios: basics (circle), strength (joint default), "
+             "limit (interference), risk (starlight peak). Choosing one sets the "
+             "demo seed and sample size below.",
+    )
     n_samples = st.number_input(
         "Number of Samples",
         min_value=1000,
         max_value=500000,
-        value=10000,
         step=1000,
+        key="n_samples",
     )
     seed = st.number_input(
         "Random Seed",
         min_value=0,
         max_value=2**32 - 1,
-        value=42,
         step=1,
-    )
-    test_name = st.selectbox(
-        "Test Function",
-        SCENARIO_KEYS,
-        format_func=lambda k: SCENARIOS[k]["label"],
-        help="Four demo scenarios: basics (circle), strength (joint default), limit (interference), risk (starlight peak).",
+        key="seed",
     )
 
     with st.expander("Advanced MISER Settings"):
@@ -354,12 +369,26 @@ plain_error = abs(plain["estimate"] - actual)
 miser_error = abs(miser["estimate"] - actual)
 
 st.subheader("Run Results")
+
+# What to look at in this scenario, with this run's numbers.
+plain_rel, miser_rel = plain_error / abs(actual), miser_error / abs(actual)
+if miser_rel > 0:
+    ratio = plain_rel / miser_rel
+    verdict = (f"MISER is **{ratio:.1f}x more accurate**" if ratio >= 1
+               else f"MISER is **{1 / ratio:.1f}x less accurate**")
+else:
+    verdict = "MISER hit the exact value"
+st.info(
+    f"👀 **What to look at** — {DEMO[test_name]['main']['focus']}\n\n"
+    f"This run: plain MC error **{plain_rel:.2%}**, MISER error **{miser_rel:.2%}** "
+    f"→ {verdict}."
+)
 left, right = st.columns(2)
 
 with left:
     st.markdown("### 🔵 Plain Monte Carlo")
     st.metric("Estimated Integral", f'{plain["estimate"]:.8f}')
-    st.metric("Absolute Error", f"{plain_error:.8f}")
+    st.metric("👉 Absolute Error", f"{plain_error:.8f}")
     st.metric("Execution Time", f'{result["plain_time"]:.4f} s')
     st.caption(
         f'Evaluations: {plain["evaluations"]:,}'
@@ -371,7 +400,7 @@ with left:
 with right:
     st.markdown("### 🟠 MISER Algorithm")
     st.metric("Estimated Integral", f'{miser["estimate"]:.8f}')
-    st.metric("Absolute Error", f"{miser_error:.8f}")
+    st.metric("👉 Absolute Error", f"{miser_error:.8f}")
     st.metric("Execution Time", f'{result["miser_time"]:.4f} s')
     st.caption(
         f'Evaluations: {miser["evaluations"]:,} | '
