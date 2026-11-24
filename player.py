@@ -197,7 +197,6 @@ function stats(){
   $("mcstat").innerHTML=`Samples ${pct}% · running estimate <b>${fmt(S.done?D.mcEstimate:(k?S.mcSum/k:NaN))}</b> · exact ${fmt(D.reference)}`;
   const shown=D.decisions.filter((d,i)=>i<S.dec).length;
   $("msstat").innerHTML=`Samples ${pct}% · decisions ${shown}/${D.decisions.length}`+
-    (S.paused>=0?` · <b style="color:#c2410c">deciding: more samples go to the higher-σ half</b>`:"")+
     (S.done?` · estimate <b>${fmt(D.msEstimate)}</b>`:"");
 }
 $("replay").onclick=start;
