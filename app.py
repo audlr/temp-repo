@@ -4,8 +4,9 @@ import time
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
+
+import player
 
 
 # ---------------------------------------------------------
@@ -62,6 +63,7 @@ def miser_monte_carlo(
     min_samples=256,
     max_depth=12,
     pilot_fraction=0.10,
+    events=None,
 ):
     """
     Recursive, variance-guided stratified Monte Carlo.
@@ -77,6 +79,10 @@ def miser_monte_carlo(
     The pilot samples guide the allocation and are not included in
     the final estimate. The total number of function evaluations,
     including pilot samples, is kept at approximately n.
+
+    events: optional list. When given, every pilot draw, split decision and
+    leaf draw is appended to it in evaluation order (for the animation).
+    Recording does not consume random numbers, so results are unchanged.
     """
     total_evaluations = 0
     all_points = []
@@ -98,6 +104,9 @@ def miser_monte_carlo(
         deepest_level = max(deepest_level, depth)
         all_points.append(pts)
         all_values.append(vals)
+        if events is not None:
+            events.append({"type": "leaf", "box": box, "depth": depth,
+                           "points": pts, "values": vals})
 
         return volume * float(np.mean(vals))
 
@@ -124,6 +133,9 @@ def miser_monte_carlo(
         pilot_points = rng.uniform(lows, highs, size=(pilot_n, dimensions))
         pilot_values = f(pilot_points)
         total_evaluations += pilot_n
+        if events is not None:
+            events.append({"type": "pilot", "box": box, "depth": depth,
+                           "points": pilot_points, "values": pilot_values})
 
         # Test a midpoint split in every dimension. Select the dimension
         # with the smallest estimated sum of volume-weighted standard deviations.
@@ -197,6 +209,11 @@ def miser_monte_carlo(
             "coordinate": midpoint,
             "bounds": box,
         })
+        if events is not None:
+            events.append({"type": "split", "box": box, "depth": depth,
+                           "dimension": dim, "coordinate": midpoint,
+                           "std": (std_left, std_right),
+                           "budget": (left_budget, right_budget)})
 
         left_estimate = recurse(left_box, left_budget, depth + 1)
         right_estimate = recurse(right_box, right_budget, depth + 1)
@@ -315,6 +332,9 @@ if run_button:
         "plain_time": plain_time,
         "miser_time": miser_time,
         "requested_samples": int(n_samples),
+        "settings": {"seed": int(seed), "min_samples": int(min_samples),
+                     "max_depth": int(max_depth),
+                     "pilot_fraction": float(pilot_fraction)},
     }
 
 if "comparison" not in st.session_state:
@@ -363,277 +383,31 @@ with right:
 
 st.markdown(f"**True integral:** `{actual:.10f}`")
 
-# Client-side Plotly animation (avoids repeatedly rerendering the Streamlit page)
+# 2-D replay of both runs with highlighted MISER decisions (player.py).
 st.subheader("Live Sampling Animation")
 st.caption(
-    "Press Play to reveal samples progressively. The animation runs inside the "
-    "3-D chart, so Streamlit does not redraw the entire page at every frame."
+    "Both runs are replayed in the order the samples were evaluated. "
+    "MISER pauses at each split decision: the split line appears, each half shows "
+    "its pilot standard deviation (σ) and its share of the remaining samples, and "
+    "the half that receives more samples is highlighted. The grey background is f."
 )
-
-animation_seconds = st.select_slider(
-    "Animation duration",
-    options=[3, 5, 8, 12],
-    value=8,
-    format_func=lambda x: f"{x} seconds",
+# Re-run MISER with the same seed only to record its events; the recorded run is
+# identical to the timed one above (recording consumes no random numbers).
+_events = []
+miser_monte_carlo(
+    lambda pts: evaluate_function(pts, test_name),
+    [(0.0, 1.0), (0.0, 1.0)],
+    int(result["requested_samples"]),
+    np.random.default_rng(result["settings"]["seed"] + 1),
+    min_samples=result["settings"]["min_samples"],
+    max_depth=result["settings"]["max_depth"],
+    pilot_fraction=result["settings"]["pilot_fraction"],
+    events=_events,
 )
-
-grid_axis = np.linspace(0, 1, 151)  # fine enough for the narrow peak and the fringes
-xx, yy = np.meshgrid(grid_axis, grid_axis)
-grid_points = np.column_stack([xx.ravel(), yy.ravel()])
-zz = evaluate_function(grid_points, test_name).reshape(xx.shape)
-
-# Use a bounded number of visible points to keep the browser animation smooth.
-animation_limit = min(1200, len(plain["points"]), len(miser["points"]))
-plain_indices = np.linspace(0, len(plain["points"]) - 1, animation_limit, dtype=int)
-miser_indices = np.linspace(0, len(miser["points"]) - 1, animation_limit, dtype=int)
-plain_anim_points = plain["points"][plain_indices]
-plain_anim_values = plain["values"][plain_indices]
-miser_anim_points = miser["points"][miser_indices]
-miser_anim_values = miser["values"][miser_indices]
-
-fig_anim = make_subplots(
-    rows=1,
-    cols=2,
-    specs=[[{"type": "scene"}, {"type": "scene"}]],
-    subplot_titles=("🔵 Plain Monte Carlo", "🟠 MISER Algorithm"),
-    horizontal_spacing=0.02,
-)
-
-# Static function surfaces are added only once.
-for col in (1, 2):
-    fig_anim.add_trace(
-        go.Surface(
-            x=xx,
-            y=yy,
-            z=zz,
-            colorscale="Viridis",
-            opacity=0.76,
-            showscale=(col == 2),
-            colorbar=dict(title="f(x, y)", len=0.72, x=1.02) if col == 2 else None,
-            name="Function surface",
-            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-        ),
-        row=1,
-        col=col,
-    )
-
-def split_sample_groups(points, values):
-    """Split into outside/inside for 0/1 scenarios; continuous scenarios keep all points active."""
-    if is_binary(test_name):
-        inside_mask = values > 0
-    else:
-        inside_mask = np.ones(len(values), dtype=bool)
-    return (
-        (points[~inside_mask], values[~inside_mask]),
-        (points[inside_mask], values[inside_mask]),
-    )
-
-# Four initially empty scatter traces are updated by Plotly frames.
-for col, color, label in [
-    (1, "#3977C3", "Plain MC"),
-    (2, "#F28E2B", "MISER"),
-]:
-    outside_name = f"{label} outside"
-    inside_name = f"{label} inside" if is_binary(test_name) else f"{label} samples"
-    fig_anim.add_trace(
-        go.Scatter3d(
-            x=[], y=[], z=[], mode="markers",
-            name=outside_name,
-            marker=dict(color="#A0A7B4", size=2.5, opacity=0.48),
-            showlegend=(col == 1 and is_binary(test_name)),
-            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-        ),
-        row=1, col=col,
-    )
-    fig_anim.add_trace(
-        go.Scatter3d(
-            x=[], y=[], z=[], mode="markers",
-            name=inside_name,
-            marker=dict(color=color, size=3.2, opacity=0.9),
-            showlegend=(col == 1),
-            hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
-        ),
-        row=1, col=col,
-    )
-
-# MISER split boundaries remain static throughout playback.
-z_top = max(float(np.max(zz)), 1.0 if is_binary(test_name) else 0.05)
-for split in miser["splits"]:
-    box = split["bounds"]
-    dim, coordinate = split["dimension"], split["coordinate"]
-    if dim == 0:
-        x_line, y_line = [coordinate, coordinate], [box[1][0], box[1][1]]
-    else:
-        x_line, y_line = [box[0][0], box[0][1]], [coordinate, coordinate]
-    fig_anim.add_trace(
-        go.Scatter3d(
-            x=x_line,
-            y=y_line,
-            z=[z_top * 1.02, z_top * 1.02],
-            mode="lines",
-            line=dict(color="#D97706", width=3, dash="dash"),
-            name="MISER split",
-            showlegend=False,
-            hoverinfo="skip",
-        ),
-        row=1, col=2,
-    )
-
-# Build frames once; Plotly animates only the four point traces in the browser.
-frame_count = 30
-frames = []
-for frame_no in range(frame_count + 1):
-    fraction = frame_no / frame_count
-    count = max(0, int(animation_limit * fraction))
-
-    (p_out_pts, p_out_vals), (p_in_pts, p_in_vals) = split_sample_groups(
-        plain_anim_points[:count], plain_anim_values[:count]
-    )
-    (m_out_pts, m_out_vals), (m_in_pts, m_in_vals) = split_sample_groups(
-        miser_anim_points[:count], miser_anim_values[:count]
-    )
-
-    # Display playback elapsed time as a deterministic timeline label.
-    elapsed_label = animation_seconds * fraction
-    status_title = (
-        f"Sampling progress: {fraction * 100:.0f}%"
-        f"  |  Elapsed: {elapsed_label:.1f}s / {animation_seconds:.1f}s"
-        f"  |  Plain: {count:,}/{animation_limit:,}"
-        f"  |  MISER: {count:,}/{animation_limit:,}"
-    )
-
-    frames.append(
-        go.Frame(
-            name=str(frame_no),
-            data=[
-                go.Scatter3d(x=p_out_pts[:, 0], y=p_out_pts[:, 1], z=p_out_vals),
-                go.Scatter3d(x=p_in_pts[:, 0], y=p_in_pts[:, 1], z=p_in_vals),
-                go.Scatter3d(x=m_out_pts[:, 0], y=m_out_pts[:, 1], z=m_out_vals),
-                go.Scatter3d(x=m_in_pts[:, 0], y=m_in_pts[:, 1], z=m_in_vals),
-            ],
-            traces=[2, 3, 4, 5],
-            layout=go.Layout(title_text=status_title),
-        )
-    )
-
-fig_anim.frames = frames
-
-# Show a small initial batch immediately so the chart is never blank
-# while the user is deciding whether to press Play.
-initial_count = max(1, animation_limit // frame_count)
-(p0_out, p0_out_v), (p0_in, p0_in_v) = split_sample_groups(
-    plain_anim_points[:initial_count], plain_anim_values[:initial_count]
-)
-(m0_out, m0_out_v), (m0_in, m0_in_v) = split_sample_groups(
-    miser_anim_points[:initial_count], miser_anim_values[:initial_count]
-)
-fig_anim.data[2].x, fig_anim.data[2].y, fig_anim.data[2].z = (
-    p0_out[:, 0], p0_out[:, 1], p0_out_v
-)
-fig_anim.data[3].x, fig_anim.data[3].y, fig_anim.data[3].z = (
-    p0_in[:, 0], p0_in[:, 1], p0_in_v
-)
-fig_anim.data[4].x, fig_anim.data[4].y, fig_anim.data[4].z = (
-    m0_out[:, 0], m0_out[:, 1], m0_out_v
-)
-fig_anim.data[5].x, fig_anim.data[5].y, fig_anim.data[5].z = (
-    m0_in[:, 0], m0_in[:, 1], m0_in_v
-)
-
-scene_style = dict(
-    xaxis=dict(title="X", range=[0, 1]),
-    yaxis=dict(title="Y", range=[0, 1]),
-    zaxis=dict(title="f(x, y)", rangemode="tozero"),
-    aspectmode="cube",
-    # Top-down view of the unit square (drag to rotate and see f as height).
-    camera=dict(eye=dict(x=0, y=0, z=2.2), up=dict(x=0, y=1, z=0),
-                projection=dict(type="orthographic")),
-)
-fig_anim.update_layout(
-    title=dict(
-        text=f"Sampling progress: 0%  |  Elapsed: 0.0s / {animation_seconds:.1f}s",
-        x=0.5,
-        xanchor="center",
-    ),
-    height=700,
-    margin=dict(l=0, r=30, t=100, b=70),
-    legend=dict(orientation="h", y=-0.08),
-    scene=scene_style,
-    scene2=scene_style,
-    updatemenus=[
-        dict(
-            type="buttons",
-            showactive=False,
-            x=0.02,
-            y=1.12,
-            xanchor="left",
-            yanchor="top",
-            buttons=[
-                dict(
-                    label="▶ Play",
-                    method="animate",
-                    args=[
-                        None,
-                        {
-                            "frame": {"duration": int(animation_seconds * 1000 / frame_count), "redraw": True},
-                            "transition": {"duration": 0},
-                            "fromcurrent": True,
-                            "mode": "immediate",
-                        },
-                    ],
-                ),
-                dict(
-                    label="❚❚ Pause",
-                    method="animate",
-                    args=[
-                        [None],
-                        {
-                            "frame": {"duration": 0, "redraw": True},
-                            "transition": {"duration": 0},
-                            "mode": "immediate",
-                        },
-                    ],
-                ),
-            ],
-        )
-    ],
-    sliders=[
-        dict(
-            active=0,
-            x=0.16,
-            y=-0.02,
-            len=0.78,
-            currentvalue={"prefix": "Frame: "},
-            steps=[
-                dict(
-                    label=str(i),
-                    method="animate",
-                    args=[
-                        [str(i)],
-                        {
-                            "frame": {"duration": 0, "redraw": True},
-                            "transition": {"duration": 0},
-                            "mode": "immediate",
-                        },
-                    ],
-                )
-                for i in range(frame_count + 1)
-            ],
-        )
-    ],
-)
-
-st.plotly_chart(
-    fig_anim,
-    use_container_width=True,
-    config={"displayModeBar": True, "scrollZoom": True},
-)
-
-st.caption(
-    f"Each algorithm displays up to {animation_limit:,} representative samples. "
-    "Use Play/Pause or the frame slider to control the animation. "
-    "The chart animation is client-side; actual algorithm execution times are shown above."
-)
+player.render(player.build_payload(
+    plain, _events, lambda pts: evaluate_function(pts, test_name),
+    is_binary(test_name), actual, plain["estimate"], miser["estimate"],
+))
 
 # Comparison table and chart
 st.subheader("Performance Comparison")
