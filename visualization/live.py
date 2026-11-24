@@ -64,7 +64,7 @@ def blank_payload(circle, reference, binary=True):
     ms = _empty_algo()
     ms.update(kind=[], leaves=[], splits=[], nodes=[])
     return {"run_id": 0, "n": 0, "circle": _overlay(circle), "binary": bool(binary),
-            "vmax": 1.0, "reference": reference,
+            "vmax": 1.0, "heat": [], "reference": reference,
             "seconds": PLAYBACK_SECONDS, "mc": _empty_algo(), "ms": ms}
 
 
@@ -90,9 +90,20 @@ def build_payload(run_id, integrand, mc, ms, reference):
             seg = [ev["midpoint"], by0, ev["midpoint"], by1]
         else:
             seg = [bx0, ev["midpoint"], bx1, ev["midpoint"]]
-        splits.append([ev["after_eval"]] + seg + [ev["depth"]])
+        share_left = ev["n_left"] / max(ev["n_left"] + ev["n_right"], 1)
+        # [after_eval, segment(4), depth, axis, box(4), share of samples to the left/lower half]
+        splits.append([ev["after_eval"]] + seg + [ev["depth"], ev["axis"],
+                                                  bx0, bx1, by0, by1, share_left])
 
     nodes = sorted([nd["eval_at_create"], nd["depth"]] for nd in ms["nodes"])
+
+    # Faint background map of f (2-D scenarios), scaled to 0..1.
+    heat = []
+    if ms.get("dim") == 2:
+        g = np.linspace(0.0, 1.0, 100)
+        gx, gy = np.meshgrid(g, g)
+        h = integrand.func(np.column_stack([gx.ravel(), gy.ravel()])).reshape(gx.shape)
+        heat = _r(h / max(float(np.max(np.abs(h))), 1e-12), 3)
 
     return {
         "run_id": run_id,
@@ -100,6 +111,7 @@ def build_payload(run_id, integrand, mc, ms, reference):
         "circle": _overlay(integrand.circle),
         "binary": binary,
         "vmax": vmax,
+        "heat": heat,
         "reference": reference,
         "seconds": PLAYBACK_SECONDS,
         "mc": {

@@ -176,9 +176,9 @@ def highlighted_metric(col, label, value, delta=None):
         color = "#15803d" if delta <= 0 else "#b91c1c"
         d = f'<div style="font-size:0.85rem;color:{color}">{delta:+.1e}</div>'
     col.markdown(
-        '<div style="background:#fff4c2;border:2px solid #f59e0b;border-radius:10px;'
+        '<div style="background:rgba(245,158,11,0.18);border:2px solid #f59e0b;border-radius:10px;'
         'padding:8px 12px">'
-        f'<div style="font-size:0.875rem;color:#555">{label}</div>'
+        f'<div style="font-size:0.875rem;opacity:0.75">{label}</div>'
         f'<div style="font-size:1.45rem;line-height:1.4">{value}</div>{d}</div>',
         unsafe_allow_html=True,
     )

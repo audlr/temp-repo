@@ -98,7 +98,7 @@ function makePanel(key) {
   const wrap = $(key + "-wrap");
   wrap.querySelectorAll("canvas").forEach((c) => c.remove());
   const layers = {};
-  for (const name of ["splits", "points", "top"]) {
+  for (const name of ["heat", "splits", "points", "top"]) {
     const c = document.createElement("canvas");
     c.className = "layer"; wrap.appendChild(c); layers[name] = c;
   }
@@ -127,6 +127,45 @@ function clearLayer(c) {
 
 function dot(ctx, x, y, r) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 6.2832); }
 
+// Faint grey map of f under the points (darker = larger f).
+function paintHeat(P) {
+  const c = P.layers.heat, ctx = c.getContext("2d"), m = P.map, H = D.heat || [], k = H.length;
+  clearLayer(c);
+  if (!k) return;
+  const cs = m.scale / k;
+  for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) {
+    const v = Math.max(0, H[j][i]); if (v < 0.01) continue;
+    ctx.fillStyle = `rgba(90,90,90,${0.06 + 0.3 * v})`;
+    ctx.fillRect(m.px(i / k), m.py((j + 1) / k), cs + 0.6, cs + 0.6);
+  }
+}
+
+// MISER decisions: short stop at each split down to this depth.
+const PAUSE_DEPTH = 3, PAUSE_MS = 700;
+function halves(s) {   // s = split row: [after, seg(4), depth, axis, bx0, bx1, by0, by1, shareLeft]
+  const [axis, x0, x1, y0, y1, c] = [s[6], s[7], s[8], s[9], s[10], axisCoord(s)];
+  return axis === 0 ? [[x0, c, y0, y1], [c, x1, y0, y1]] : [[x0, x1, y0, c], [x0, x1, c, y1]];
+}
+function axisCoord(s) { return s[6] === 0 ? s[1] : s[2]; }
+function paintDecision(ctx, m, ts) {
+  const s = D.ms.splits[S.decision], H = halves(s), share = [s[11], 1 - s[11]];
+  const big = share[0] >= share[1] ? 0 : 1;
+  const flash = 0.5 * Math.max(0, 1 - (ts - S.pauseStart) / PAUSE_MS);   // one short flash
+  H.forEach((h, i) => {
+    ctx.fillStyle = i === big ? `rgba(255,127,14,${flash})` : "rgba(120,120,120,0.08)";
+    ctx.fillRect(m.px(h[0]), m.py(h[3]), m.px(h[1]) - m.px(h[0]), m.py(h[2]) - m.py(h[3]));
+  });
+  ctx.strokeStyle = "#7f3f00"; ctx.lineWidth = 3; ctx.beginPath();
+  ctx.moveTo(m.px(s[1]), m.py(s[2])); ctx.lineTo(m.px(s[3]), m.py(s[4])); ctx.stroke();
+  H.forEach((h, i) => {
+    const txt = `${Math.round(100 * share[i])}%`, cx = m.px((h[0] + h[1]) / 2), cy = m.py((h[2] + h[3]) / 2);
+    ctx.font = (i === big ? "bold " : "") + "13px sans-serif"; ctx.textAlign = "center";
+    const w = ctx.measureText(txt).width + 8;
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillRect(cx - w / 2, cy - 11, w, 16);
+    ctx.fillStyle = i === big ? "#7f3f00" : "#555"; ctx.fillText(txt, cx, cy + 1);
+  });
+}
+
 // Continuous scenarios: 5 shades of the algorithm colour by f / max f.
 const RGB = {mc: "31,119,180", ms: "255,127,14"};
 function shadeOf(v) { return Math.min(4, Math.floor(5 * v / (D.vmax || 1))); }
@@ -137,21 +176,27 @@ function paintPoints(P, src, from, to) {
   P.painted += to - from;
   const ctx = P.layers.points.getContext("2d"), m = P.map;
   const r = Math.max(1.3, Math.min(2.2, 9000 / Math.max(D.n, 1)));
+  if (src.kind) {   // MISER pilot samples: faint purple
+    ctx.fillStyle = "rgba(122,60,170,0.30)"; ctx.beginPath();
+    for (let i = from; i < to; i++) if (src.kind[i] === 0) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
+    ctx.fill();
+  }
+  const prod = (i) => !src.kind || src.kind[i] === 1;
   if (!D.binary) {
     for (let b = 0; b < 5; b++) {
       ctx.fillStyle = b === 0 ? OUTSIDE[P.key] : `rgba(${RGB[P.key]},${0.2 + 0.18 * b})`;
       ctx.beginPath();
       for (let i = from; i < to; i++)
-        if (shadeOf(src.v[i]) === b) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
+        if (prod(i) && shadeOf(src.v[i]) === b) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
       ctx.fill();
     }
     return;
   }
   ctx.fillStyle = OUTSIDE[P.key]; ctx.beginPath();
-  for (let i = from; i < to; i++) if (!src.v[i]) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
+  for (let i = from; i < to; i++) if (prod(i) && !src.v[i]) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
   ctx.fill();
   ctx.fillStyle = INSIDE[P.key]; ctx.beginPath();
-  for (let i = from; i < to; i++) if (src.v[i]) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
+  for (let i = from; i < to; i++) if (prod(i) && src.v[i]) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
   ctx.fill();
 }
 
@@ -182,6 +227,7 @@ function paintTop(P) {
     ctx.strokeRect(m.px(l[3]), m.py(l[6]), m.px(l[4]) - m.px(l[3]), m.py(l[5]) - m.py(l[6]));
     ctx.setLineDash([]);
   }
+  if (P.key === "ms" && S && S.decision >= 0) paintDecision(ctx, m, S.nowTs);
 }
 
 function legends() {
@@ -192,7 +238,7 @@ function legends() {
     ? item("dot", col, "f = 1") + item("dot", "#94a3b8", "f = 0")
     : item("dot", col, "Darker = larger f") + item("dot", "#94a3b8", "f ≈ 0");
   $("mc-legend").innerHTML = outline + pts(C.mc);
-  $("ms-legend").innerHTML = outline + pts(C.ms) +
+  $("ms-legend").innerHTML = outline + pts(C.ms) + item("dot", "rgba(122,60,170,0.55)", "Pilot sample") +
     item("line", "rgba(160,82,45,0.6)", "Split boundary") +
     item("line", C.current, "Region being sampled");
 }
@@ -203,7 +249,8 @@ function freshState() {
           mcIn: 0, msIn: 0, mcMax: 0, msMax: 0,
           leafPtr: 0, curLeaf: -1, curSum: 0, curCount: 0, curArea: 0,
           doneSum: 0, doneArea: 0, leavesDone: 0, splitPtr: 0, nodePtr: 0,
-          depth: 0, maxDepth: 0};
+          depth: 0, maxDepth: 0,
+          pausePtr: 0, decision: -1, pauseStart: 0, pauseUntil: 0, nowTs: 0};
 }
 
 function advance(to) {
@@ -287,12 +334,28 @@ function paintStats() {
 function tick(ts) {
   rafId = null;
   if (!S.playing) return;
+  S.nowTs = ts;
+  if (S.decision >= 0) {                 // short stop at a MISER decision
+    if (ts < S.pauseUntil) { paintTop(PS); paintStats(); rafId = requestAnimationFrame(tick); return; }
+    S.decision = -1; S.lastTs = ts; paintTop(PS);
+  }
   if (S.lastTs !== null) {
     const dt = Math.min(ts - S.lastTs, 250);
     S.progress += dt / 1000 * D.n / D.seconds;
   }
   S.lastTs = ts;
-  advance(Math.min(D.n, Math.floor(S.progress)));
+  let to = Math.min(D.n, Math.floor(S.progress));
+  const sp = D.ms.splits;
+  while (S.pausePtr < sp.length && sp[S.pausePtr][0] <= to) {
+    const i = S.pausePtr++;
+    if (sp[i][5] <= PAUSE_DEPTH) {        // stop exactly when this split is decided
+      to = Math.max(S.shown, sp[i][0]); S.progress = to;
+      S.decision = i; S.pauseStart = ts; S.pauseUntil = ts + PAUSE_MS;
+      break;
+    }
+  }
+  advance(to);
+  if (S.decision >= 0) paintTop(PS);
   if (S.shown >= D.n) { S.done = true; S.playing = false; }
   paintStats();
   if (S.done && !S.reported) {          // tell Streamlit: show the final statistics
@@ -310,7 +373,7 @@ function start() {
   Promise.all([Plotly.newPlot("mc-plot", [], LAYOUT(), CFG),
                Plotly.newPlot("ms-plot", [], LAYOUT(), CFG)]).then(() => {
     PM = makePanel("mc"); PS = makePanel("ms");
-    fitPanel(PM); fitPanel(PS); paintTop(PM); paintTop(PS);
+    fitPanel(PM); fitPanel(PS); paintHeat(PM); paintHeat(PS); paintTop(PM); paintTop(PS);
     paintStats(); setHeight();
     if (D.n > 0) { S.playing = true; rafId = requestAnimationFrame(tick); }
   });
@@ -325,6 +388,7 @@ window.addEventListener("resize", () => {
     Promise.all([Plotly.Plots.resize("mc-plot"), Plotly.Plots.resize("ms-plot")]).then(() => {
       for (const P of [PM, PS]) { fitPanel(P); Object.values(P.layers).forEach(clearLayer); }
       paintPoints(PM, D.mc, 0, S.shown); paintPoints(PS, D.ms, 0, S.shown);
+      paintHeat(PM); paintHeat(PS);
       paintSplits(0, S.splitPtr); paintTop(PM); paintTop(PS); setHeight();
     });
   }, 150);
