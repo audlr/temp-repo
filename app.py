@@ -6,14 +6,35 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-
-# 시나리오 4개를 불러오기 위해 추가
-from scenarios import DEMO, SCENARIOS
-
+from scenarios import DEMO, SCENARIOS  # 시나리오 4개를 불러오기 위해 추가
 
 # ---------------------------------------------------------
 # Test functions and exact integrals
 # ---------------------------------------------------------
+CENTER = (0.70, 0.30)
+RADIUS = 0.15
+SIGMA = 0.06
+
+
+def circle_indicator(points):
+    """1 inside the circle, 0 outside."""
+    dx = points[:, 0] - CENTER[0]
+    dy = points[:, 1] - CENTER[1]
+    return ((dx * dx + dy * dy) <= RADIUS**2).astype(float)
+
+
+def gaussian_function(points):
+    """Narrow 2-D Gaussian used in the original Python code."""
+    dx = points[:, 0] - CENTER[0]
+    dy = points[:, 1] - CENTER[1]
+    return np.exp(-(dx * dx + dy * dy) / (2 * SIGMA**2))
+
+
+def gaussian_1d_integral(a, b, mu, sigma=SIGMA):
+    return sigma * math.sqrt(math.pi / 2) * (
+        math.erf((b - mu) / (math.sqrt(2) * sigma))
+        - math.erf((a - mu) / (math.sqrt(2) * sigma))
+    )
 
 
 # 원/가우시안 대신 scenarios.py의 함수와 정답값을 쓰기 위해 수정
@@ -668,14 +689,7 @@ comparison_df = pd.DataFrame({
     "Function Evaluations": [plain["evaluations"], miser["evaluations"]],
     "Maximum Depth": [plain["depth"], miser["depth"]],
 })
-# 비교표의 Absolute Error 열을 하이라이트하기 위해 수정
-st.dataframe(
-    comparison_df.style.set_properties(
-        subset=["Absolute Error"],
-        **{"background-color": "rgba(245, 158, 11, 0.18)", "font-weight": "bold"},
-    ),
-    use_container_width=True, hide_index=True,
-)
+st.dataframe(comparison_df.style.set_properties(subset=["Absolute Error"], **{"background-color": "rgba(245, 158, 11, 0.18)", "font-weight": "bold"}), use_container_width=True, hide_index=True)  # 비교표를 하이라이트하기 위해 수정
 
 error_fig = go.Figure()
 error_fig.add_trace(go.Bar(
