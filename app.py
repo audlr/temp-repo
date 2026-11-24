@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from scenarios import DEMO, SCENARIOS  # 시나리오 4개를 불러오기 위해 추가
+from scenarios import DEMO, SCENARIOS  # 시나리오 4개 추가
 
 # ---------------------------------------------------------
 # Test functions and exact integrals
@@ -37,7 +37,7 @@ def gaussian_1d_integral(a, b, mu, sigma=SIGMA):
     )
 
 
-# 원/가우시안 대신 scenarios.py의 함수와 정답값을 쓰기 위해 수정
+# 원/가우시안 대신 시나리오 4개를 쓰기 위해 수정
 def exact_integral(test_name):
     return SCENARIOS[test_name]["exact"]()
 
@@ -254,7 +254,7 @@ st.caption(
     "sample allocation."
 )
 
-# 시나리오를 고르면 시연용 Seed와 샘플 수를 넣기 위해 추가
+# 시나리오별 시연용 Seed·샘플 수를 자동으로 넣기 위해 추가
 def apply_demo_preset():
     preset = DEMO[st.session_state["test_name"]]["main"]
     st.session_state["n_samples"] = preset["n"]
@@ -272,16 +272,15 @@ with st.sidebar:
         min_value=1000,
         max_value=500000,
         step=1000,
-        key="n_samples",  # 프리셋을 넣기 위해 수정
+        key="n_samples",
     )
     seed = st.number_input(
         "Random Seed",
         min_value=0,
         max_value=2**32 - 1,
         step=1,
-        key="seed",  # 프리셋을 넣기 위해 수정
+        key="seed",
     )
-    # 시나리오 4개 중에서 고르기 위해 수정
     test_name = st.selectbox(
         "Test Function",
         list(SCENARIOS),
@@ -310,7 +309,6 @@ with st.sidebar:
     run_button = st.button("Run Comparison", type="primary", use_container_width=True)
 
     st.divider()
-    # 시나리오별 설명과 정답값을 보여주기 위해 수정
     st.markdown(f"**Target:** {SCENARIOS[test_name]['description']}")
     st.latex(rf"I = {exact_integral(test_name):.6f}")
 
@@ -369,7 +367,7 @@ plain_error = abs(plain["estimate"] - actual)
 miser_error = abs(miser["estimate"] - actual)
 
 st.subheader("Run Results")
-# Absolute Error 카드와 오차 그래프를 하이라이트하기 위해 추가
+# 결과(Absolute Error) 하이라이트를 위해 추가
 st.markdown(
     """<style>
     .st-key-hlplainabs, .st-key-hlmiserabs, .st-key-hlerrorchart {
@@ -384,7 +382,7 @@ left, right = st.columns(2)
 with left:
     st.markdown("### 🔵 Plain Monte Carlo")
     st.metric("Estimated Integral", f'{plain["estimate"]:.8f}')
-    with st.container(key="hlplainabs"):  # 하이라이트하기 위해 수정
+    with st.container(key="hlplainabs"):
         st.metric("Absolute Error", f"{plain_error:.8f}")
     st.metric("Execution Time", f'{result["plain_time"]:.4f} s')
     st.caption(
@@ -396,7 +394,7 @@ with left:
 with right:
     st.markdown("### 🟠 MISER Algorithm")
     st.metric("Estimated Integral", f'{miser["estimate"]:.8f}')
-    with st.container(key="hlmiserabs"):  # 하이라이트하기 위해 수정
+    with st.container(key="hlmiserabs"):
         st.metric("Absolute Error", f"{miser_error:.8f}")
     st.metric("Execution Time", f'{result["miser_time"]:.4f} s')
     st.caption(
@@ -422,7 +420,7 @@ animation_seconds = st.select_slider(
     format_func=lambda x: f"{x} seconds",
 )
 
-grid_axis = np.linspace(0, 1, 151)  # 좁은 봉우리와 줄무늬가 보이게 하기 위해 수정
+grid_axis = np.linspace(0, 1, 151)  # 좁은 봉우리·줄무늬가 보이게 수정
 xx, yy = np.meshgrid(grid_axis, grid_axis)
 grid_points = np.column_stack([xx.ravel(), yy.ravel()])
 zz = evaluate_function(grid_points, test_name).reshape(xx.shape)
@@ -464,7 +462,7 @@ for col in (1, 2):
 
 def split_sample_groups(points, values):
     """Return outside and inside point arrays (for Circle); Gaussian points are all active."""
-    if is_binary(test_name):  # 0/1 시나리오(원·동시 부도)를 구분하기 위해 수정
+    if is_binary(test_name):
         inside_mask = values > 0
     else:
         inside_mask = np.ones(len(values), dtype=bool)
@@ -479,13 +477,13 @@ for col, color, label in [
     (2, "#F28E2B", "MISER"),
 ]:
     outside_name = f"{label} outside"
-    inside_name = f"{label} samples" if not is_binary(test_name) else f"{label} inside"  # 0/1 시나리오(원·동시 부도)를 구분하기 위해 수정
+    inside_name = f"{label} samples" if not is_binary(test_name) else f"{label} inside"
     fig_anim.add_trace(
         go.Scatter3d(
             x=[], y=[], z=[], mode="markers",
             name=outside_name,
             marker=dict(color="#A0A7B4", size=2.5, opacity=0.48),
-            showlegend=(col == 1 and is_binary(test_name)),  # 0/1 시나리오(원·동시 부도)를 구분하기 위해 수정
+            showlegend=(col == 1 and is_binary(test_name)),
             hovertemplate="x=%{x:.3f}<br>y=%{y:.3f}<br>f=%{z:.4f}<extra></extra>",
         ),
         row=1, col=col,
@@ -502,7 +500,7 @@ for col, color, label in [
     )
 
 # MISER split boundaries remain static throughout playback.
-z_top = max(float(np.max(zz)), 1.0 if is_binary(test_name) else 0.05)  # 0/1 시나리오(원·동시 부도)를 구분하기 위해 수정
+z_top = max(float(np.max(zz)), 1.0 if is_binary(test_name) else 0.05)
 for split in miser["splits"]:
     box = split["bounds"]
     dim, coordinate = split["dimension"], split["coordinate"]
@@ -689,7 +687,7 @@ comparison_df = pd.DataFrame({
     "Function Evaluations": [plain["evaluations"], miser["evaluations"]],
     "Maximum Depth": [plain["depth"], miser["depth"]],
 })
-st.dataframe(comparison_df.style.set_properties(subset=["Absolute Error"], **{"background-color": "rgba(245, 158, 11, 0.18)", "font-weight": "bold"}), use_container_width=True, hide_index=True)  # 비교표를 하이라이트하기 위해 수정
+st.dataframe(comparison_df.style.set_properties(subset=["Absolute Error"], **{"background-color": "rgba(245, 158, 11, 0.18)", "font-weight": "bold"}), use_container_width=True, hide_index=True)
 
 error_fig = go.Figure()
 error_fig.add_trace(go.Bar(
@@ -704,7 +702,7 @@ error_fig.update_layout(
     height=350,
     showlegend=False,
 )
-with st.container(key="hlerrorchart"):  # 하이라이트하기 위해 수정
+with st.container(key="hlerrorchart"):
     st.plotly_chart(error_fig, use_container_width=True)
 
 time_fig = go.Figure()
