@@ -277,3 +277,58 @@ def test_circle_reference_and_estimates():
     tol = 10 * 0.257 / math.sqrt(100_000)
     assert abs(mc["estimate"] - f.reference(bounds)) < tol
     assert abs(ms["estimate"] - f.reference(bounds)) < tol
+
+
+# 시나리오 4개의 정답값과 동작을 확인하기 위해 추가
+UNIT2 = [[0.0, 1.0], [0.0, 1.0]]
+
+
+def rmse(errors):
+    return float(np.sqrt(np.mean(np.square(errors))))
+
+
+from scenarios import SCENARIOS  # noqa: E402
+
+DEMO_KEYS = tuple(SCENARIOS)
+
+
+def test_demo_order():
+    assert DEMO_KEYS == ("circle", "joint_default", "interference", "peak")
+
+
+@pytest.mark.parametrize("key", DEMO_KEYS)
+def test_demo_reference_matches_large_mc(key):
+    sc = SCENARIOS[key]
+    v = sc["func"](np.random.default_rng(7).random((2_000_000, 2)))
+    assert abs(v.mean() - sc["exact"]()) < 5 * v.std() / math.sqrt(len(v))
+
+
+@pytest.mark.parametrize("key", DEMO_KEYS)
+def test_demo_budget_and_instrumentation(key):
+    ms = run_miser(20_000, 1, 300, SCENARIOS[key]["func"], UNIT2)
+    assert ms["evaluations"] == 20_000
+    area = sum((nd["box"][0][1] - nd["box"][0][0]) * (nd["box"][1][1] - nd["box"][1][0])
+               for nd in ms["nodes"] if nd["leaf"])
+    assert math.isclose(area, 1.0)
+
+
+def test_circle_is_original_demo():
+    p = np.random.default_rng(0).random((100_000, 2))
+    assert np.array_equal(SCENARIOS["circle"]["func"](p), INTEGRANDS["circle"].func(p))
+
+
+def _demo_rmse(key, seeds=30):
+    f, ref = SCENARIOS[key]["func"], SCENARIOS[key]["exact"]()
+    mc = [run_plain_monte_carlo(20_000, s, f, UNIT2)["estimate"] - ref for s in range(seeds)]
+    ms = [run_miser(20_000, s + 1, 300, f, UNIT2)["estimate"] - ref for s in range(seeds)]
+    return rmse(mc), rmse(ms)
+
+
+def test_interference_miser_loses():
+    mc, ms = _demo_rmse("interference")
+    assert ms > mc
+
+
+def test_peak_this_implementation_loses():
+    mc, ms = _demo_rmse("peak")
+    assert ms > mc
