@@ -168,28 +168,24 @@ ms_in_prod = int(ms["values"][ms["kinds"] == 1].sum()) if BINARY else None
 ms_depth = max(nd["depth"] for nd in ms["nodes"])
 ms_leaves = sum(nd["leaf"] for nd in ms["nodes"])
 
-def highlighted_metric(col, label, value, delta=None):
-    """A metric card with a highlighted background: the number to look at.
-    delta: MISER − Plain MC (negative is better, shown green)."""
-    d = ""
-    if delta is not None:
-        color = "#15803d" if delta <= 0 else "#b91c1c"
-        d = f'<div style="font-size:0.85rem;color:{color}">{delta:+.1e}</div>'
-    col.markdown(
-        '<div style="background:rgba(245,158,11,0.18);border:2px solid #f59e0b;border-radius:10px;'
-        'padding:8px 12px">'
-        f'<div style="font-size:0.875rem;opacity:0.75">{label}</div>'
-        f'<div style="font-size:1.45rem;line-height:1.4">{value}</div>{d}</div>',
-        unsafe_allow_html=True,
-    )
-
+# Highlight the two Absolute error cards: same st.metric as the others (same delta
+# style), with an amber background via their container keys.
+st.markdown(
+    """<style>
+    .st-key-hlmcabs div[data-testid="stMetric"], .st-key-hlmsabs div[data-testid="stMetric"] {
+        background: rgba(245, 158, 11, 0.18); border: 2px solid #f59e0b;
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
 
 c_mc, c_ms = st.columns(2)
 with c_mc:
     st.markdown('<h4 style="color:#1f77b4">Plain Monte Carlo</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{mc['estimate']:.6f}")
-    highlighted_metric(a[1], "Absolute error", f"{mc_abs:.2e}")
+    with a[1].container(key="hlmcabs"):
+        st.metric("Absolute error", f"{mc_abs:.2e}")
     a[2].metric("Relative error", f"{mc_rel * 100:.3f} %")
     a[3].metric("Execution time", f"{mc['elapsed'] * 1000:.2f} ms")
     b = st.columns(4)
@@ -206,7 +202,10 @@ with c_ms:
     st.markdown('<h4 style="color:#ff7f0e">MISER Algorithm</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{ms['estimate']:.6f}")
-    highlighted_metric(a[1], "Absolute error", f"{ms_abs:.2e}", delta=ms_abs - mc_abs)
+    with a[1].container(key="hlmsabs"):
+        st.metric("Absolute error", f"{ms_abs:.2e}",
+                  delta=f"{ms_abs - mc_abs:+.1e}", delta_color="inverse",
+                  help="Delta = MISER − Plain MC (negative is better).")
     a[2].metric("Relative error", f"{ms_rel * 100:.3f} %")
     a[3].metric("Execution time", f"{ms['elapsed'] * 1000:.2f} ms",
                 delta=f"{(ms['elapsed'] - mc['elapsed']) * 1000:+.1f} ms",
