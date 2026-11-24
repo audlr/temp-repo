@@ -545,7 +545,9 @@ scene_style = dict(
     yaxis=dict(title="Y", range=[0, 1]),
     zaxis=dict(title="f(x, y)", rangemode="tozero"),
     aspectmode="cube",
-    camera=dict(eye=dict(x=1.55, y=1.55, z=1.15)),
+    # Top-down view of the unit square (drag to rotate and see f as height).
+    camera=dict(eye=dict(x=0, y=0, z=2.2), up=dict(x=0, y=1, z=0),
+                projection=dict(type="orthographic")),
 )
 fig_anim.update_layout(
     title=dict(
