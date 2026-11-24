@@ -5,9 +5,8 @@ UI 전용 파일. 알고리즘은 miser.py, 기준값/실험 반복은 experimen
 그래프는 visualization/plots.py, 실시간 원 샘플링 애니메이션은
 visualization/live.py (+ live_component/index.html) 에 있다.
 
-적분 대상: 사이드바에서 고르는 시연 시나리오 4개 (scenarios.py, 모두 단위정사각형 2D).
-  circle = 원 넓이(기본값), joint_default = 두 회사 동시 부도(0/1),
-  interference = 간섭 무늬, peak = 별빛(좁은 가우시안 봉우리).
+적분 대상: 단위정사각형 안의 원(원래 데모의 원, 중심 (0.70, 0.30), r = 0.15)에
+대한 지시함수 f(x, y) = 1 if inside else 0. 적분값 = 원의 넓이 = π r².
 
 실행 흐름: 사이드바 Run Comparison → 두 알고리즘 실행 → 새 run_id 로 애니메이션
 자동 시작 → 애니메이션이 끝나면 컴포넌트가 run_id 를 돌려줌 → 최종 통계 표시.
@@ -17,7 +16,7 @@ import streamlit as st
 
 from experiments import (
     INTEGRANDS,
-    Integrand,
+    Integrand,  # 시나리오를 Integrand로 감싸기 위해 추가
     SWEEP_SIZES,
     errors,
     make_bounds,
@@ -27,13 +26,13 @@ from experiments import (
     seeds_for,
     sweep,
 )
+# 시나리오 4개를 불러오기 위해 추가
 from miser import UNIT_SQUARE
 from scenarios import DEMO as PRESETS
 from scenarios import SCENARIOS
 from visualization import live, plots
 
-# Demo scenarios (scenarios.py). The circle reuses the original registered demo;
-# the others are wrapped into the same Integrand record used by experiments.py.
+# 원 하나 대신 시나리오 4개를 쓰기 위해 수정
 DEMO_KEYS = tuple(SCENARIOS)
 DEMO = {
     k: INTEGRANDS[k] if k == "circle" else Integrand(
@@ -43,7 +42,6 @@ DEMO = {
         fixed_bounds=UNIT_SQUARE, circle=sc["overlay"], area_mode=sc["binary"])
     for k, sc in SCENARIOS.items()
 }
-
 
 st.set_page_config(page_title="Monte Carlo vs MISER", page_icon="📊", layout="wide")
 st.markdown(
@@ -64,8 +62,8 @@ st.caption("Interactive Visualization and Performance Comparison of "
            "Monte Carlo Integration Algorithms")
 
 # ============================================================ sidebar
+# 시나리오를 고르면 시연용 Seed와 샘플 수를 넣기 위해 추가
 def apply_demo_preset():
-    """Choosing a scenario sets the seed and sample size that show it best."""
     preset = PRESETS[st.session_state["scenario"]]["risk"]
     st.session_state["n_samples"] = preset["n"]
     st.session_state["seed"] = preset["seed"]
@@ -77,19 +75,18 @@ if "scenario" not in st.session_state:
 
 with st.sidebar:
     st.header("Experiment Settings")
+    # 시나리오를 고르기 위해 추가
     scenario = st.selectbox("Scenario", DEMO_KEYS, key="scenario",
                             on_change=apply_demo_preset,
-                            format_func=lambda k: SCENARIOS[k]["label"],
-                            help="Choosing a scenario sets the demo seed and "
-                                 "sample size below.")
+                            format_func=lambda k: SCENARIOS[k]["label"])
     n_samples = st.number_input(
         "Number of Samples", min_value=1_000, max_value=100_000,
-        step=1_000, key="n_samples",
+        step=1_000, key="n_samples",  # 프리셋을 넣기 위해 수정
         help="Total function-evaluation budget given to EACH algorithm. "
              "MISER's pilot (variance-estimation) samples are included.",
     )
     seed = st.number_input("Random Seed", min_value=0, max_value=999_999,
-                           step=1, key="seed")
+                           step=1, key="seed")  # 프리셋을 넣기 위해 수정
     with st.expander("Advanced"):
         leaf_size = st.slider(
             "MISER leaf sample threshold", 100, 800, 300, 50,
@@ -98,17 +95,18 @@ with st.sidebar:
         )
     run_clicked = st.button("Run Comparison", type="primary", width="stretch")
 
+# 고른 시나리오로 계산하기 위해 추가
 TARGET = DEMO[scenario]
 BOUNDS = make_bounds(TARGET, 0, 1)
 REFERENCE = TARGET.reference(BOUNDS)
-BINARY = TARGET.area_mode          # 0/1 indicator -> inside/outside counts
 with st.sidebar:
     st.caption(
+        # 시나리오별 설명과 정답값을 보여주기 위해 수정
         f"Target: {SCENARIOS[scenario]['description']} Exact integral = {REFERENCE:.6f}. "
         f"The animation replays each run in about {live.PLAYBACK_SECONDS} s."
     )
 
-settings = (scenario, int(n_samples), int(seed), int(leaf_size))
+settings = (scenario, int(n_samples), int(seed), int(leaf_size))  # 시나리오가 바뀌면 다시 실행하게 하기 위해 수정
 
 # ============================================================ run
 if run_clicked:
@@ -132,7 +130,7 @@ if run and run["settings"] != settings:
                "to apply the new settings.")
 
 # ============================================================ animation (top)
-payload = run["payload"] if run else live.blank_payload(TARGET.circle, REFERENCE, BINARY)
+payload = run["payload"] if run else live.blank_payload(TARGET.circle, REFERENCE, TARGET.area_mode)
 finished_id = live.live_sampling(payload)
 if run and finished_id == run["run_id"]:
     st.session_state["anim_done"] = run["run_id"]
@@ -140,7 +138,7 @@ if run and finished_id == run["run_id"]:
 if run is None:
     st.info("Set the number of samples in the sidebar and click **Run Comparison**. "
             "Both algorithms then start dropping points into the square at the same "
-            "time and the running estimates are shown live.")
+            "time; points inside the circle are counted live.")
     st.stop()
 
 done = st.session_state.get("anim_done") == run["run_id"]
@@ -153,23 +151,21 @@ if not done:
     st.stop()
 
 r_scenario, r_n, r_seed, r_leaf = run["settings"]
-# Statistics always describe the run on screen, even if the sidebar has changed since.
+# 통계를 화면에 보이는 실행의 시나리오 기준으로 계산하기 위해 추가
 TARGET = DEMO[r_scenario]
 BOUNDS = make_bounds(TARGET, 0, 1)
 REFERENCE = TARGET.reference(BOUNDS)
-BINARY = TARGET.area_mode
 mc, ms = run["mc"], run["ms"]
 mc_abs, mc_rel = errors(mc["estimate"], REFERENCE)
 ms_abs, ms_rel = errors(ms["estimate"], REFERENCE)
-mc_in = int(mc["values"].sum()) if BINARY else None
-ms_in = int(ms["values"].sum()) if BINARY else None
+mc_in = int(mc["values"].sum())
+ms_in = int(ms["values"].sum())
 ms_pilot = int((ms["kinds"] == 0).sum())
-ms_in_prod = int(ms["values"][ms["kinds"] == 1].sum()) if BINARY else None
+ms_in_prod = int(ms["values"][ms["kinds"] == 1].sum())
 ms_depth = max(nd["depth"] for nd in ms["nodes"])
 ms_leaves = sum(nd["leaf"] for nd in ms["nodes"])
 
-# Highlight the two Absolute error cards: same st.metric as the others (same delta
-# style), with an amber background via their container keys.
+# Absolute error 카드를 하이라이트하기 위해 추가
 st.markdown(
     """<style>
     .st-key-hlmcabs div[data-testid="stMetric"], .st-key-hlmsabs div[data-testid="stMetric"] {
@@ -184,25 +180,21 @@ with c_mc:
     st.markdown('<h4 style="color:#1f77b4">Plain Monte Carlo</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{mc['estimate']:.6f}")
-    with a[1].container(key="hlmcabs"):
+    with a[1].container(key="hlmcabs"):  # 하이라이트하기 위해 수정
         st.metric("Absolute error", f"{mc_abs:.2e}")
     a[2].metric("Relative error", f"{mc_rel * 100:.3f} %")
     a[3].metric("Execution time", f"{mc['elapsed'] * 1000:.2f} ms")
     b = st.columns(4)
     b[0].metric("Total samples", f"{mc['evaluations']:,}")
-    if BINARY:
-        b[1].metric("Samples with f = 1", f"{mc_in:,}")
-        b[2].metric("Ratio f = 1", f"{100 * mc_in / mc['evaluations']:.2f} %")
-    else:
-        b[1].metric("Mean f", f"{mc['values'].mean():.4f}")
-        b[2].metric("Max f seen", f"{mc['values'].max():.4f}")
+    b[1].metric("Inside circle", f"{mc_in:,}")
+    b[2].metric("Inside ratio", f"{100 * mc_in / mc['evaluations']:.2f} %")
     b[3].metric("Pilot samples", "0",
-                help="Plain MC has no pilot phase: estimate = mean of f × area (1).")
+                help="Plain MC has no pilot phase: area = (inside / total) × 1.")
 with c_ms:
     st.markdown('<h4 style="color:#ff7f0e">MISER Algorithm</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{ms['estimate']:.6f}")
-    with a[1].container(key="hlmsabs"):
+    with a[1].container(key="hlmsabs"):  # 하이라이트하기 위해 수정
         st.metric("Absolute error", f"{ms_abs:.2e}",
                   delta=f"{ms_abs - mc_abs:+.1e}", delta_color="inverse",
                   help="Delta = MISER − Plain MC (negative is better).")
@@ -214,14 +206,9 @@ with c_ms:
     b = st.columns(4)
     b[0].metric("Total samples", f"{ms['evaluations']:,}",
                 help=f"Includes {ms_pilot:,} pilot samples.")
-    if BINARY:
-        b[1].metric("Samples with f = 1", f"{ms_in:,}")
-        b[2].metric("Ratio f = 1", f"{100 * ms_in / ms['evaluations']:.2f} %",
-                    help="Not the MISER estimate: MISER samples non-uniformly.")
-    else:
-        b[1].metric("Mean f", f"{ms['values'].mean():.4f}",
-                    help="Not the MISER estimate: MISER samples non-uniformly.")
-        b[2].metric("Max f seen", f"{ms['values'].max():.4f}")
+    b[1].metric("Inside circle", f"{ms_in:,}")
+    b[2].metric("Inside ratio", f"{100 * ms_in / ms['evaluations']:.2f} %",
+                help="Not the MISER estimate: MISER samples non-uniformly.")
     b[3].metric("Splits / depth", f"{len(ms['splits'])} / {ms_depth}",
                 help="Region splits / maximum recursion depth.")
 
@@ -229,9 +216,9 @@ t1, t2 = st.columns([1.15, 1])
 with t1:
     st.dataframe(
         [
-            {"Metric": "Final estimate",
+            {"Metric": "Final estimate (circle area)",
              "Plain Monte Carlo": f"{mc['estimate']:.6f}", "MISER": f"{ms['estimate']:.6f}"},
-            {"Metric": f"Reference value ({TARGET.reference_kind})",
+            {"Metric": "Reference value (πr²)",
              "Plain Monte Carlo": f"{REFERENCE:.6f}", "MISER": f"{REFERENCE:.6f}"},
             {"Metric": "Absolute error",
              "Plain Monte Carlo": f"{mc_abs:.3e}", "MISER": f"{ms_abs:.3e}"},
@@ -243,15 +230,15 @@ with t1:
             {"Metric": "Total samples",
              "Plain Monte Carlo": f"{mc['evaluations']:,}",
              "MISER": f"{ms['evaluations']:,} (pilot {ms_pilot:,})"},
-            *([{"Metric": "Samples with f = 1",
-                "Plain Monte Carlo": f"{mc_in:,}",
-                "MISER": f"{ms_in:,} (production {ms_in_prod:,})"},
-               {"Metric": "Ratio f = 1",
-                "Plain Monte Carlo": f"{100 * mc_in / mc['evaluations']:.2f} %",
-                "MISER": f"{100 * ms_in / ms['evaluations']:.2f} %"}] if BINARY else []),
-            {"Metric": "How the integral is computed",
-             "Plain Monte Carlo": "mean of f × area (1)",
-             "MISER": "Σ region area × mean of f in region"},
+            {"Metric": "Samples inside circle",
+             "Plain Monte Carlo": f"{mc_in:,}",
+             "MISER": f"{ms_in:,} (production {ms_in_prod:,})"},
+            {"Metric": "Inside ratio",
+             "Plain Monte Carlo": f"{100 * mc_in / mc['evaluations']:.2f} %",
+             "MISER": f"{100 * ms_in / ms['evaluations']:.2f} %"},
+            {"Metric": "How the area is computed",
+             "Plain Monte Carlo": "inside / total × 1",
+             "MISER": "Σ region area × fraction"},
             {"Metric": "Region splits / max depth / leaf regions",
              "Plain Monte Carlo": "—",
              "MISER": f"{len(ms['splits'])} / {ms_depth} / {ms_leaves}"},
@@ -266,10 +253,11 @@ with t2:
 more_acc = "MISER" if ms_abs < mc_abs else "Plain Monte Carlo"
 faster = "MISER" if ms["elapsed"] < mc["elapsed"] else "Plain Monte Carlo"
 st.caption(
-    f"In this run, **{more_acc}** was closer to the exact value and **{faster}** "
-    "computed faster. MISER concentrates samples where f varies most, but it also "
-    "spends part of the budget on pilot samples, and a pilot that misses a small "
-    "feature reports zero variance, so whether the concentration pays off depends on "
+    f"In this run, **{more_acc}** was closer to the true area and **{faster}** "
+    "computed faster. MISER concentrates samples in the regions around the "
+    "circle (where the indicator changes and the variance is high), but it also "
+    "spends part of the budget on pilot samples, and a pilot that misses the small "
+    "circle reports zero variance, so whether the concentration pays off depends on "
     "the problem and budget. One random run cannot decide which method is better — "
     "see *Error analysis → Repeated experiments* for RMSE over many runs. "
     "Execution time is measured inside each algorithm and "
@@ -394,7 +382,7 @@ with tab_about:
             """
             **Plain Monte Carlo**
             - Drops points **uniformly** over the whole square.
-            - Integral ≈ mean of f over all points × square area.
+            - Area ≈ (points inside / all points) × square area.
             - Error shrinks like **1/√N**; no adaptation, minimal overhead.
             """)
     with ab2:
@@ -403,9 +391,9 @@ with tab_about:
             **MISER (recursive stratified sampling)**
             - **Recursively bisects** the square along the more useful axis.
             - Uses a few **pilot samples** to estimate each half's variance.
-            - Gives **more samples to the higher-variance half**: e.g. around a
-              narrow peak or a rare-event corner.
-            - Integral = Σ region area × mean of f in that region.
+            - Gives **more samples to the higher-variance half**: for a circle,
+              the regions crossing its edge.
+            - Area = Σ region area × inside-fraction in that region.
             - Not guaranteed to win every run or every problem.
             """)
     mc_seed, miser_seed = seeds_for(r_seed)

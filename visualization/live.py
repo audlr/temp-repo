@@ -9,8 +9,7 @@ Python 쪽은 *실제 알고리즘 실행 결과*를 실행 순서 그대로 직
 값으로 돌려주고, app.py 는 그 신호로 최종 통계를 표시한다.
 
 - 샘플 순서: run_*()가 반환한 points 배열 순서 = 실제 함수 평가 순서.
-- 점 색: run_*()가 반환한 values 를 그대로 사용. 0/1 시나리오(binary)는 안/밖 두 색,
-  연속 시나리오는 f 값에 비례한 진하기.
+- 원 내부 판정: run_*()가 반환한 values (= circle_indicator, 0/1) 를 그대로 사용.
 - MISER 분할선: splits[i]["after_eval"] 시점(해당 분할을 결정한 파일럿
   샘플을 모두 평가한 직후)에 표시.
 - MISER 리프 영역: nodes[...]["eval_start"] 부터 count 개의 본 샘플.
@@ -50,6 +49,7 @@ def _empty_algo():
     return {"x": [], "y": [], "v": [], "elapsed": 0.0, "estimate": 0.0}
 
 
+# 원이 없는 시나리오와 연속값 시나리오를 보내기 위해 추가
 def _overlay(circle):
     return list(circle) if circle is not None else None
 
@@ -59,8 +59,8 @@ def _values(res, binary):
             else _r(res["values"], 5))
 
 
-def blank_payload(circle, reference, binary=True):
-    """Idle state before the first run: only the square (and optional outline)."""
+def blank_payload(circle, reference, binary=True):  # 시나리오를 받기 위해 수정
+    """Idle state before the first run: only the square and the circle."""
     ms = _empty_algo()
     ms.update(kind=[], leaves=[], splits=[], nodes=[])
     return {"run_id": 0, "n": 0, "circle": _overlay(circle), "binary": bool(binary),
@@ -69,9 +69,10 @@ def blank_payload(circle, reference, binary=True):
 
 
 def build_payload(run_id, integrand, mc, ms, reference):
-    """Serialize the real runs (in evaluation order) for the browser animation."""
+    """Serialize the real circle-indicator runs for the browser animation."""
     n = int(mc["evaluations"])
     assert n == ms["evaluations"]
+    # 0/1 시나리오와 연속값 시나리오를 구분하기 위해 추가
     binary = bool(integrand.area_mode)
     vmax = float(max(mc["values"].max(), ms["values"].max(), 1e-12))
 
@@ -90,14 +91,14 @@ def build_payload(run_id, integrand, mc, ms, reference):
             seg = [ev["midpoint"], by0, ev["midpoint"], by1]
         else:
             seg = [bx0, ev["midpoint"], bx1, ev["midpoint"]]
+        # 분할할 때 % 비율을 보여주기 위해 추가
         share_left = ev["n_left"] / max(ev["n_left"] + ev["n_right"], 1)
-        # [after_eval, segment(4), depth, axis, box(4), share of samples to the left/lower half]
         splits.append([ev["after_eval"]] + seg + [ev["depth"], ev["axis"],
                                                   bx0, bx1, by0, by1, share_left])
 
     nodes = sorted([nd["eval_at_create"], nd["depth"]] for nd in ms["nodes"])
 
-    # Faint background map of f (2-D scenarios), scaled to 0..1.
+    # 배경 히트맵을 그리기 위해 추가
     heat = []
     if ms.get("dim") == 2:
         g = np.linspace(0.0, 1.0, 100)
@@ -108,7 +109,7 @@ def build_payload(run_id, integrand, mc, ms, reference):
     return {
         "run_id": run_id,
         "n": n,
-        "circle": _overlay(integrand.circle),
+        "circle": _overlay(integrand.circle),  # 시나리오 데이터를 보내기 위해 수정
         "binary": binary,
         "vmax": vmax,
         "heat": heat,
@@ -116,12 +117,12 @@ def build_payload(run_id, integrand, mc, ms, reference):
         "seconds": PLAYBACK_SECONDS,
         "mc": {
             "x": _r(mc["points"][:, 0]), "y": _r(mc["points"][:, 1]),
-            "v": _values(mc, binary),
+            "v": _values(mc, binary),  # 연속값도 보내기 위해 수정
             "elapsed": mc["elapsed"], "estimate": mc["estimate"],
         },
         "ms": {
             "x": _r(ms["points"][:, 0]), "y": _r(ms["points"][:, 1]),
-            "v": _values(ms, binary),
+            "v": _values(ms, binary),  # 연속값도 보내기 위해 수정
             "kind": ms["kinds"].astype(int).tolist(),
             "leaves": leaves, "splits": splits, "nodes": nodes,
             "elapsed": ms["elapsed"], "estimate": ms["estimate"],
