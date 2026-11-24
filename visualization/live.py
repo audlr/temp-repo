@@ -49,7 +49,7 @@ def _empty_algo():
     return {"x": [], "y": [], "v": [], "elapsed": 0.0, "estimate": 0.0}
 
 
-# 원이 없는 시나리오와 연속값 시나리오를 보내기 위해 추가
+# 원이 없는·연속값 시나리오도 보내기 위해 추가
 def _overlay(circle):
     return list(circle) if circle is not None else None
 
@@ -72,7 +72,6 @@ def build_payload(run_id, integrand, mc, ms, reference):
     """Serialize the real circle-indicator runs for the browser animation."""
     n = int(mc["evaluations"])
     assert n == ms["evaluations"]
-    # 0/1 시나리오와 연속값 시나리오를 구분하기 위해 추가
     binary = bool(integrand.area_mode)
     vmax = float(max(mc["values"].max(), ms["values"].max(), 1e-12))
 
@@ -109,7 +108,7 @@ def build_payload(run_id, integrand, mc, ms, reference):
     return {
         "run_id": run_id,
         "n": n,
-        "circle": _overlay(integrand.circle),  # 시나리오 데이터를 보내기 위해 수정
+        "circle": _overlay(integrand.circle),
         "binary": binary,
         "vmax": vmax,
         "heat": heat,
@@ -117,12 +116,12 @@ def build_payload(run_id, integrand, mc, ms, reference):
         "seconds": PLAYBACK_SECONDS,
         "mc": {
             "x": _r(mc["points"][:, 0]), "y": _r(mc["points"][:, 1]),
-            "v": _values(mc, binary),  # 연속값도 보내기 위해 수정
+            "v": _values(mc, binary),
             "elapsed": mc["elapsed"], "estimate": mc["estimate"],
         },
         "ms": {
             "x": _r(ms["points"][:, 0]), "y": _r(ms["points"][:, 1]),
-            "v": _values(ms, binary),  # 연속값도 보내기 위해 수정
+            "v": _values(ms, binary),
             "kind": ms["kinds"].astype(int).tolist(),
             "leaves": leaves, "splits": splits, "nodes": nodes,
             "elapsed": ms["elapsed"], "estimate": ms["estimate"],

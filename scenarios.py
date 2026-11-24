@@ -1,4 +1,4 @@
-# 시연용 시나리오 4개(원 넓이, 두 회사 동시 부도, 간섭 무늬, 별빛)를 정의하기 위해 추가
+# 시연용 시나리오 4개(원 넓이·동시 부도·간섭 무늬·별빛)를 위해 추가
 import cmath
 import math
 from statistics import NormalDist
@@ -132,7 +132,7 @@ SCENARIOS = {
 }
 
 
-# 시나리오를 고르면 시연용 Seed와 샘플 수를 자동으로 넣기 위해 추가 (main = Gausian-Peak 앱, risk = monte-carlo-miser 앱)
+# 시나리오별 시연용 Seed·샘플 수 (main = Gausian-Peak, risk = monte-carlo-miser)
 DEMO = {
     "circle": {"main": {"seed": 114, "n": 10_000}, "risk": {"seed": 146, "n": 10_000}},
     "joint_default": {"main": {"seed": 82, "n": 10_000}, "risk": {"seed": 76, "n": 10_000}},

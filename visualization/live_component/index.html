@@ -98,7 +98,7 @@ function makePanel(key) {
   const wrap = $(key + "-wrap");
   wrap.querySelectorAll("canvas").forEach((c) => c.remove());
   const layers = {};
-  for (const name of ["heat", "splits", "points", "top"]) {  // 배경 히트맵 층을 넣기 위해 수정
+  for (const name of ["heat", "splits", "points", "top"]) {
     const c = document.createElement("canvas");
     c.className = "layer"; wrap.appendChild(c); layers[name] = c;
   }
@@ -182,7 +182,6 @@ function paintPoints(P, src, from, to) {
     for (let i = from; i < to; i++) if (src.kind[i] === 0) dot(ctx, m.px(src.x[i]), m.py(src.y[i]), r);
     ctx.fill();
   }
-  // 연속값 시나리오를 그리기 위해 추가
   const prod = (i) => !src.kind || src.kind[i] === 1;
   if (!D.binary) {
     for (let b = 0; b < 5; b++) {
@@ -218,7 +217,7 @@ function paintSplits(from, to) {
 function paintTop(P) {
   const c = P.layers.top, ctx = c.getContext("2d"), m = P.map;
   clearLayer(c);
-  if (D.circle) {  // 원이 없는 시나리오를 위해 수정
+  if (D.circle) {
     const [cx, cy, r] = D.circle;
     ctx.strokeStyle = C.circle; ctx.lineWidth = 2; ctx.beginPath();
     ctx.arc(m.px(cx), m.py(cy), r * m.scale, 0, 6.2832); ctx.stroke();
@@ -229,7 +228,7 @@ function paintTop(P) {
     ctx.strokeRect(m.px(l[3]), m.py(l[6]), m.px(l[4]) - m.px(l[3]), m.py(l[5]) - m.py(l[6]));
     ctx.setLineDash([]);
   }
-  if (P.key === "ms" && S && S.decision >= 0) paintDecision(ctx, m, S.nowTs);  // 분할 강조를 위해 추가
+  if (P.key === "ms" && S && S.decision >= 0) paintDecision(ctx, m, S.nowTs);
 }
 
 function legends() {
@@ -239,7 +238,7 @@ function legends() {
     item("dot", C.mc, "Inside circle") + item("dot", "#94a3b8", "Outside circle");
   $("ms-legend").innerHTML = item("line", C.circle, "Circle") +
     item("dot", C.ms, "Inside circle") + item("dot", "#94a3b8", "Outside circle") +
-    item("dot", "rgba(122,60,170,0.55)", "Pilot sample") +  // 파일럿 점 범례를 위해 추가
+    item("dot", "rgba(122,60,170,0.55)", "Pilot sample") +
     item("line", "rgba(160,82,45,0.6)", "Split boundary") +
     item("line", C.current, "Region being sampled");
 }
@@ -251,7 +250,6 @@ function freshState() {
           leafPtr: 0, curLeaf: -1, curSum: 0, curCount: 0, curArea: 0,
           doneSum: 0, doneArea: 0, leavesDone: 0, splitPtr: 0, nodePtr: 0,
           depth: 0, maxDepth: 0,
-          // 분할 강조 상태를 위해 추가
           pausePtr: 0, decision: -1, pauseStart: 0, pauseUntil: 0, nowTs: 0};
 }
 
@@ -331,7 +329,7 @@ function paintStats() {
 function tick(ts) {
   rafId = null;
   if (!S.playing) return;
-  // 분할할 때 잠깐 멈추기 위해 추가
+  // 분할 시점에서 잠깐 멈추기 위해 추가
   S.nowTs = ts;
   if (S.decision >= 0) {
     if (ts < S.pauseUntil) { paintTop(PS); paintStats(); rafId = requestAnimationFrame(tick); return; }
@@ -342,7 +340,6 @@ function tick(ts) {
     S.progress += dt / 1000 * D.n / D.seconds;
   }
   S.lastTs = ts;
-  // 분할 시점에서 멈추기 위해 수정
   let to = Math.min(D.n, Math.floor(S.progress));
   const sp = D.ms.splits;
   while (S.pausePtr < sp.length && sp[S.pausePtr][0] <= to) {
@@ -372,7 +369,7 @@ function start() {
   Promise.all([Plotly.newPlot("mc-plot", [], LAYOUT(), CFG),
                Plotly.newPlot("ms-plot", [], LAYOUT(), CFG)]).then(() => {
     PM = makePanel("mc"); PS = makePanel("ms");
-    fitPanel(PM); fitPanel(PS); paintHeat(PM); paintHeat(PS); paintTop(PM); paintTop(PS);  // 배경 히트맵을 위해 수정
+    fitPanel(PM); fitPanel(PS); paintHeat(PM); paintHeat(PS); paintTop(PM); paintTop(PS);
     paintStats(); setHeight();
     if (D.n > 0) { S.playing = true; rafId = requestAnimationFrame(tick); }
   });
@@ -387,7 +384,7 @@ window.addEventListener("resize", () => {
     Promise.all([Plotly.Plots.resize("mc-plot"), Plotly.Plots.resize("ms-plot")]).then(() => {
       for (const P of [PM, PS]) { fitPanel(P); Object.values(P.layers).forEach(clearLayer); }
       paintPoints(PM, D.mc, 0, S.shown); paintPoints(PS, D.ms, 0, S.shown);
-      paintHeat(PM); paintHeat(PS);  // 배경 히트맵을 위해 추가
+      paintHeat(PM); paintHeat(PS);
       paintSplits(0, S.splitPtr); paintTop(PM); paintTop(PS); setHeight();
     });
   }, 150);

@@ -16,7 +16,7 @@ import streamlit as st
 
 from experiments import (
     INTEGRANDS,
-    Integrand,  # 시나리오를 Integrand로 감싸기 위해 추가
+    Integrand,
     SWEEP_SIZES,
     errors,
     make_bounds,
@@ -26,7 +26,7 @@ from experiments import (
     seeds_for,
     sweep,
 )
-# 시나리오 4개를 불러오기 위해 추가
+# 원 하나 대신 시나리오 4개를 쓰기 위해 추가
 from miser import UNIT_SQUARE
 from scenarios import DEMO as PRESETS
 from scenarios import SCENARIOS
@@ -36,7 +36,6 @@ CIRCLE = INTEGRANDS["circle"]
 BOUNDS = make_bounds(CIRCLE, 0, 1)
 REFERENCE = CIRCLE.reference(BOUNDS)
 CX, CY, R = CIRCLE.circle
-# 원 하나 대신 시나리오 4개를 쓰기 위해 추가
 DEMO_KEYS = tuple(SCENARIOS)
 DEMO = {
     k: INTEGRANDS[k] if k == "circle" else Integrand(
@@ -66,7 +65,7 @@ st.caption("Interactive Visualization and Performance Comparison of "
            "Monte Carlo Integration Algorithms")
 
 # ============================================================ sidebar
-# 시나리오를 고르면 시연용 Seed와 샘플 수를 넣기 위해 추가
+# 시나리오별 시연용 Seed·샘플 수를 자동으로 넣기 위해 추가
 def apply_demo_preset():
     preset = PRESETS[st.session_state["scenario"]]["risk"]
     st.session_state["n_samples"] = preset["n"]
@@ -79,18 +78,17 @@ if "scenario" not in st.session_state:
 
 with st.sidebar:
     st.header("Experiment Settings")
-    # 시나리오를 고르기 위해 추가
     scenario = st.selectbox("Scenario", DEMO_KEYS, key="scenario",
                             on_change=apply_demo_preset,
                             format_func=lambda k: SCENARIOS[k]["label"])
     n_samples = st.number_input(
         "Number of Samples", min_value=1_000, max_value=100_000,
-        step=1_000, key="n_samples",  # 프리셋을 넣기 위해 수정
+        step=1_000, key="n_samples",
         help="Total function-evaluation budget given to EACH algorithm. "
              "MISER's pilot (variance-estimation) samples are included.",
     )
     seed = st.number_input("Random Seed", min_value=0, max_value=999_999,
-                           step=1, key="seed")  # 프리셋을 넣기 위해 수정
+                           step=1, key="seed")
     with st.expander("Advanced"):
         leaf_size = st.slider(
             "MISER leaf sample threshold", 100, 800, 300, 50,
@@ -99,15 +97,14 @@ with st.sidebar:
         )
     run_clicked = st.button("Run Comparison", type="primary", width="stretch")
     CIRCLE = DEMO[scenario]  # 고른 시나리오로 계산하기 위해 추가
-    BOUNDS = make_bounds(CIRCLE, 0, 1)  # 고른 시나리오로 계산하기 위해 추가
-    REFERENCE = CIRCLE.reference(BOUNDS)  # 고른 시나리오로 계산하기 위해 추가
+    BOUNDS = make_bounds(CIRCLE, 0, 1)
+    REFERENCE = CIRCLE.reference(BOUNDS)
     st.caption(
-        # 시나리오별 설명과 정답값을 보여주기 위해 수정
         f"Target: {SCENARIOS[scenario]['description']} Exact integral = {REFERENCE:.6f}. "
         f"The animation replays each run in about {live.PLAYBACK_SECONDS} s."
     )
 
-settings = (scenario, int(n_samples), int(seed), int(leaf_size))  # 시나리오가 바뀌면 다시 실행하게 하기 위해 수정
+settings = (scenario, int(n_samples), int(seed), int(leaf_size))
 
 # ============================================================ run
 if run_clicked:
@@ -152,7 +149,7 @@ if not done:
     st.stop()
 
 r_scenario, r_n, r_seed, r_leaf = run["settings"]
-# 통계를 화면에 보이는 실행의 시나리오 기준으로 계산하기 위해 추가
+# 통계를 실행한 시나리오 기준으로 계산하기 위해 추가
 CIRCLE = DEMO[r_scenario]
 BOUNDS = make_bounds(CIRCLE, 0, 1)
 REFERENCE = CIRCLE.reference(BOUNDS)
@@ -166,7 +163,7 @@ ms_in_prod = int(ms["values"][ms["kinds"] == 1].sum())
 ms_depth = max(nd["depth"] for nd in ms["nodes"])
 ms_leaves = sum(nd["leaf"] for nd in ms["nodes"])
 
-# Absolute error 카드를 하이라이트하기 위해 추가
+# 결과(Absolute error) 하이라이트를 위해 추가
 st.markdown(
     """<style>
     .st-key-hlmcabs div[data-testid="stMetric"], .st-key-hlmsabs div[data-testid="stMetric"] {
@@ -180,7 +177,7 @@ with c_mc:
     st.markdown('<h4 style="color:#1f77b4">Plain Monte Carlo</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{mc['estimate']:.6f}")
-    with a[1].container(key="hlmcabs"):  # 하이라이트하기 위해 수정
+    with a[1].container(key="hlmcabs"):
         st.metric("Absolute error", f"{mc_abs:.2e}")
     a[2].metric("Relative error", f"{mc_rel * 100:.3f} %")
     a[3].metric("Execution time", f"{mc['elapsed'] * 1000:.2f} ms")
@@ -194,7 +191,7 @@ with c_ms:
     st.markdown('<h4 style="color:#ff7f0e">MISER Algorithm</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{ms['estimate']:.6f}")
-    with a[1].container(key="hlmsabs"):  # 하이라이트하기 위해 수정
+    with a[1].container(key="hlmsabs"):
         st.metric("Absolute error", f"{ms_abs:.2e}",
                   delta=f"{ms_abs - mc_abs:+.1e}", delta_color="inverse",
                   help="Delta = MISER − Plain MC (negative is better).")
