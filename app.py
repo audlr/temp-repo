@@ -28,6 +28,7 @@ from experiments import (
     sweep,
 )
 from miser import UNIT_SQUARE
+from scenarios import DEMO as PRESETS
 from scenarios import SCENARIOS
 from visualization import live, plots
 
@@ -63,18 +64,32 @@ st.caption("Interactive Visualization and Performance Comparison of "
            "Monte Carlo Integration Algorithms")
 
 # ============================================================ sidebar
+def apply_demo_preset():
+    """Choosing a scenario sets the seed and sample size that show it best."""
+    preset = PRESETS[st.session_state["scenario"]]["risk"]
+    st.session_state["n_samples"] = preset["n"]
+    st.session_state["seed"] = preset["seed"]
+
+
+if "scenario" not in st.session_state:
+    st.session_state["scenario"] = DEMO_KEYS[0]
+    apply_demo_preset()
+
 with st.sidebar:
     st.header("Experiment Settings")
-    scenario = st.selectbox("Scenario", DEMO_KEYS,
-                            format_func=lambda k: SCENARIOS[k]["label"])
+    scenario = st.selectbox("Scenario", DEMO_KEYS, key="scenario",
+                            on_change=apply_demo_preset,
+                            format_func=lambda k: SCENARIOS[k]["label"],
+                            help="Choosing a scenario sets the demo seed and "
+                                 "sample size below.")
     n_samples = st.number_input(
         "Number of Samples", min_value=1_000, max_value=100_000,
-        value=10_000, step=1_000,
+        step=1_000, key="n_samples",
         help="Total function-evaluation budget given to EACH algorithm. "
              "MISER's pilot (variance-estimation) samples are included.",
     )
     seed = st.number_input("Random Seed", min_value=0, max_value=999_999,
-                           value=42, step=1)
+                           step=1, key="seed")
     with st.expander("Advanced"):
         leaf_size = st.slider(
             "MISER leaf sample threshold", 100, 800, 300, 50,
@@ -138,6 +153,11 @@ if not done:
     st.stop()
 
 r_scenario, r_n, r_seed, r_leaf = run["settings"]
+# Statistics always describe the run on screen, even if the sidebar has changed since.
+TARGET = DEMO[r_scenario]
+BOUNDS = make_bounds(TARGET, 0, 1)
+REFERENCE = TARGET.reference(BOUNDS)
+BINARY = TARGET.area_mode
 mc, ms = run["mc"], run["ms"]
 mc_abs, mc_rel = errors(mc["estimate"], REFERENCE)
 ms_abs, ms_rel = errors(ms["estimate"], REFERENCE)
@@ -148,12 +168,25 @@ ms_in_prod = int(ms["values"][ms["kinds"] == 1].sum()) if BINARY else None
 ms_depth = max(nd["depth"] for nd in ms["nodes"])
 ms_leaves = sum(nd["leaf"] for nd in ms["nodes"])
 
+# What to look at in this scenario, with this run's numbers.
+if ms_abs > 0:
+    _ratio = mc_abs / ms_abs
+    _verdict = (f"MISER is **{_ratio:.1f}x more accurate**" if _ratio >= 1
+                else f"MISER is **{1 / _ratio:.1f}x less accurate**")
+else:
+    _verdict = "MISER hit the exact value"
+st.info(
+    f"👀 **What to look at** — {PRESETS[r_scenario]['risk']['focus']}\n\n"
+    f"This run: plain MC error **{mc_rel:.2%}**, MISER error **{ms_rel:.2%}** "
+    f"→ {_verdict}."
+)
+
 c_mc, c_ms = st.columns(2)
 with c_mc:
     st.markdown('<h4 style="color:#1f77b4">Plain Monte Carlo</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{mc['estimate']:.6f}")
-    a[1].metric("Absolute error", f"{mc_abs:.2e}")
+    a[1].metric("👉 Absolute error", f"{mc_abs:.2e}")
     a[2].metric("Relative error", f"{mc_rel * 100:.3f} %")
     a[3].metric("Execution time", f"{mc['elapsed'] * 1000:.2f} ms")
     b = st.columns(4)
@@ -170,7 +203,7 @@ with c_ms:
     st.markdown('<h4 style="color:#ff7f0e">MISER Algorithm</h4>', unsafe_allow_html=True)
     a = st.columns(4)
     a[0].metric("Final estimate", f"{ms['estimate']:.6f}")
-    a[1].metric("Absolute error", f"{ms_abs:.2e}",
+    a[1].metric("👉 Absolute error", f"{ms_abs:.2e}",
                 delta=f"{ms_abs - mc_abs:+.1e}", delta_color="inverse",
                 help="Delta = MISER − Plain MC (negative is better).")
     a[2].metric("Relative error", f"{ms_rel * 100:.3f} %")

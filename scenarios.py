@@ -159,3 +159,52 @@ SCENARIOS = {
         ),
     },
 }
+
+
+# ------------------------------------------------------------ 시연 프리셋
+# 시나리오를 고르면 앱이 아래 Seed·샘플 수로 바꿔 둔다.
+# Seed 는 "운 좋은 극단값"이 아니라, 30번 반복한 평균 결과(RMSE 비율)에 가장 가까운
+# 대표적인 실행을 골랐다(0~149 중 탐색). 예외: risk 앱의 peak 는 위험성을 보여주려고
+# 30번 중 2번꼴로 나오는 실패 사례(Seed 7)를 일부러 골랐다.
+#   main = Gausian-Peak 앱(파일럿 10%),  risk = monte-carlo-miser 앱(축별 파일럿 8~16개)
+# focus 는 결과 화면에서 강조해서 보여줄 "볼 곳" 안내 문구다.
+DEMO = {
+    "circle": {
+        "main": {"seed": 114, "n": 10_000,
+                 "focus": "Basics: compare the Absolute Error. Plain MC estimates the area as "
+                          "the share of points inside the circle; MISER puts more points on the "
+                          "rows the circle crosses and is usually closer (about 3x over 30 runs)."},
+        "risk": {"seed": 146, "n": 10_000,
+                 "focus": "Basics: with only 8-16 pilot points per half, this MISER is no better "
+                          "than plain MC here (about 0.8x over 30 runs). Compare the Absolute Error."},
+    },
+    "joint_default": {
+        "main": {"seed": 82, "n": 10_000,
+                 "focus": "Strength: look at the Absolute Error. Plain MC lands only a handful of "
+                          "points in the tiny default corner and is off by ~20%; MISER sends its "
+                          "samples there and is off by ~3% (about 6.5x over 30 runs)."},
+        "risk": {"seed": 76, "n": 10_000,
+                 "focus": "This MISER's few pilot points rarely hit the tiny corner, so it gains "
+                          "nothing over plain MC (about 1.0x over 30 runs). Compare the Absolute Error."},
+    },
+    "interference": {
+        "main": {"seed": 66, "n": 10_000,
+                 "focus": "Limit: look at the Absolute Error - MISER is worse. Every split sees "
+                          "about the same variance (~50/50), so it only spends samples on pilots "
+                          "(about 0.67x over 30 runs)."},
+        "risk": {"seed": 6, "n": 10_000,
+                 "focus": "Limit: MISER is worse than plain MC (about 0.85x over 30 runs). "
+                          "Every split sees about the same variance, so there is nothing to gain."},
+    },
+    "peak": {
+        "main": {"seed": 40, "n": 10_000,
+                 "focus": "Look at the Absolute Error: with enough pilot samples MISER finds the "
+                          "narrow peak and is far more accurate (about 8.5x over 30 runs). Compare "
+                          "with the risk app, where the same scenario fails."},
+        "risk": {"seed": 7, "n": 10_000,
+                 "focus": "Risk: look at the MISER Final estimate - about twice the exact value "
+                          "(92% error). The pilot points missed the peak, so the half that holds it "
+                          "got only the minimum samples and was never split. This happens in about "
+                          "2 of 30 runs."},
+    },
+}
