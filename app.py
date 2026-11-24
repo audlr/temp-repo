@@ -7,7 +7,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-import player
 
 
 # ---------------------------------------------------------
@@ -64,7 +63,6 @@ def miser_monte_carlo(
     min_samples=256,
     max_depth=12,
     pilot_fraction=0.10,
-    events=None,
 ):
     """
     Recursive, variance-guided stratified Monte Carlo.
@@ -80,10 +78,6 @@ def miser_monte_carlo(
     The pilot samples guide the allocation and are not included in
     the final estimate. The total number of function evaluations,
     including pilot samples, is kept at approximately n.
-
-    events: optional list. When given, every pilot draw, split decision and
-    leaf draw is appended to it in evaluation order (for the animation).
-    Recording does not consume random numbers, so results are unchanged.
     """
     total_evaluations = 0
     all_points = []
@@ -105,9 +99,6 @@ def miser_monte_carlo(
         deepest_level = max(deepest_level, depth)
         all_points.append(pts)
         all_values.append(vals)
-        if events is not None:
-            events.append({"type": "leaf", "box": box, "depth": depth,
-                           "points": pts, "values": vals})
 
         return volume * float(np.mean(vals))
 
@@ -134,9 +125,6 @@ def miser_monte_carlo(
         pilot_points = rng.uniform(lows, highs, size=(pilot_n, dimensions))
         pilot_values = f(pilot_points)
         total_evaluations += pilot_n
-        if events is not None:
-            events.append({"type": "pilot", "box": box, "depth": depth,
-                           "points": pilot_points, "values": pilot_values})
 
         # Test a midpoint split in every dimension. Select the dimension
         # with the smallest estimated sum of volume-weighted standard deviations.
@@ -210,11 +198,6 @@ def miser_monte_carlo(
             "coordinate": midpoint,
             "bounds": box,
         })
-        if events is not None:
-            events.append({"type": "split", "box": box, "depth": depth,
-                           "dimension": dim, "coordinate": midpoint,
-                           "std": (std_left, std_right),
-                           "budget": (left_budget, right_budget)})
 
         left_estimate = recurse(left_box, left_budget, depth + 1)
         right_estimate = recurse(right_box, right_budget, depth + 1)
@@ -348,9 +331,6 @@ if run_button:
         "plain_time": plain_time,
         "miser_time": miser_time,
         "requested_samples": int(n_samples),
-        "settings": {"seed": int(seed), "min_samples": int(min_samples),
-                     "max_depth": int(max_depth),
-                     "pilot_fraction": float(pilot_fraction)},
     }
 
 if "comparison" not in st.session_state:
@@ -681,32 +661,6 @@ st.caption(
     "Use Play/Pause or the frame slider to control the animation. "
     "The chart animation is client-side; actual algorithm execution times are shown above."
 )
-
-# 2-D replay of both runs with highlighted MISER decisions (player.py).
-st.subheader("MISER Decision Replay")
-st.caption(
-    "Both runs are replayed in the order the samples were evaluated. "
-    "MISER pauses briefly at each split decision: the split line appears, each half "
-    "shows its share of the remaining samples, and the half that receives more "
-    "samples flashes once. The grey background is f."
-)
-# Re-run MISER with the same seed only to record its events; the recorded run is
-# identical to the timed one above (recording consumes no random numbers).
-_events = []
-miser_monte_carlo(
-    lambda pts: evaluate_function(pts, test_name),
-    [(0.0, 1.0), (0.0, 1.0)],
-    int(result["requested_samples"]),
-    np.random.default_rng(result["settings"]["seed"] + 1),
-    min_samples=result["settings"]["min_samples"],
-    max_depth=result["settings"]["max_depth"],
-    pilot_fraction=result["settings"]["pilot_fraction"],
-    events=_events,
-)
-player.render(player.build_payload(
-    plain, _events, lambda pts: evaluate_function(pts, test_name),
-    is_binary(test_name), actual, plain["estimate"], miser["estimate"],
-))
 
 # Comparison table and chart
 st.subheader("Performance Comparison")

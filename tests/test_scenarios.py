@@ -167,17 +167,3 @@ def test_circle_miser_wins():
 def test_estimators_unbiased(key):
     for e in errs(key):
         assert abs(e.mean()) < 6 * e.std(ddof=1) / math.sqrt(len(e))
-
-
-# ------------------------------------------------------------- 5. 애니메이션 기록
-@pytest.mark.parametrize("key", KEYS)
-def test_event_recording_does_not_change_the_run(key):
-    """events 기록은 난수를 쓰지 않으므로 결과가 완전히 같고, 평가 횟수도 맞는다."""
-    f = SCENARIOS[key]["func"]
-    a = miser(f, UNIT2, 10_000, rng(43))
-    events = []
-    b = miser(f, UNIT2, 10_000, rng(43), events=events)
-    assert a["estimate"] == b["estimate"]
-    assert np.array_equal(a["points"], b["points"])
-    assert sum(len(e["points"]) for e in events if e["type"] != "split") == 10_000
-    assert sum(e["type"] == "split" for e in events) == len(b["splits"])
